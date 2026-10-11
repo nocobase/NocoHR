@@ -138,6 +138,9 @@
     ]
   },
   "dependencies": {
+    "@langchain/core": "1.1.49",
+    "@langchain/langgraph": "1.4.4",
+    "@langchain/langgraph-checkpoint": "1.1.2",
     "@larksuiteoapi/node-sdk": "^1.74.0",
     "@nocobase/ai-employee": "^0.2.0-beta.8",
     "@nocobase/app-cli": "1.0.0-beta.12",
@@ -173,6 +176,7 @@
     "@oclif/core": "^4.14.0",
     "better-auth": "1.7.5",
     "hono": "^4.13.2",
+    "langchain": "1.2.39",
     "mailparser": "^3.9.31",
     "mammoth": "^1.13.0",
     "unpdf": "^1.8.1",
