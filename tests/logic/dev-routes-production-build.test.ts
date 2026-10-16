@@ -22,8 +22,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
  * production bundle. A unit test cannot show that — only a real production build can, because the guarantee comes
  * from Vite replacing `import.meta.env.PROD` with `true` and then dropping the branch that becomes unreachable.
  *
- * The fixture builds against the real `@nocobase/app-client` helpers rather than a stand-in, so the test fails if the
- * guard inside `defineDevRoutes()` is ever weakened.
+ * The fixture builds against NocoHR's real surface adapter and caller-side guard, the same boundary used by
+ * application routes and the retained plugin patches. Client 3 no longer provides built-in development routes.
  */
 
 const appClientPackagePath = findPackageJSON(
@@ -92,7 +92,8 @@ beforeAll(async () => {
   // must survive exactly the build that drops the dev page.
   await writeFile(
     path.join(source, 'main.ts'),
-    `import { defineDevRoutes, defineSettingsRoutes } from '@nocobase/app-client/plugins';\n\n` +
+    `import { defineAppRoutes } from '@nocobase/app-client/plugins';\n` +
+      `import { defineDevRoutes, defineSettingsRoutes } from 'nocohr/surface-routes';\n\n` +
       `const routes = [\n` +
       `  defineSettingsRoutes([\n` +
       `    {\n` +
@@ -102,7 +103,7 @@ beforeAll(async () => {
       `      componentLoader: () => import('./settings-page.js'),\n` +
       `    },\n` +
       `  ]),\n` +
-      `  defineDevRoutes([\n` +
+      `  import.meta.env.PROD ? defineAppRoutes([]) : defineDevRoutes([\n` +
       `    {\n` +
       `      name: 'dev-page',\n` +
       `      path: '/dev-page',\n` +
@@ -125,6 +126,13 @@ beforeAll(async () => {
       logLevel: 'silent',
       resolve: {
         alias: [
+          {
+            find: 'nocohr/surface-routes',
+            replacement: path.resolve(
+              import.meta.dirname,
+              '../../client/routing/surface-routes.ts',
+            ),
+          },
           {
             find: '@nocobase/app-client/plugins',
             replacement: appClientPlugins,

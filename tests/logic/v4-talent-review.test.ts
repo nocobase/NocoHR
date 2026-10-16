@@ -19,7 +19,6 @@ import {
   until,
   type Harness,
 } from './talent-review-harness.ts';
-import { eventually } from '../helpers/eventually.ts';
 
 let h: Harness;
 const REVIEW = 'tr-demo-sz';
@@ -332,13 +331,16 @@ describe('13A 关键岗位与继任', () => {
     }
     const njl = await h.userId('mgr_njl');
     const east = await h.userId('mgr_east');
-    const notices = await eventually(async () =>
-      (await h.db())
-        .query()
-        .selectFrom('notificationInAppItems')
-        .selectAll()
-        .where('title', 'like', '%继任候选推荐%')
-        .execute(),
+    const notices = await until(
+      async () =>
+        (await h.db())
+          .query()
+          .selectFrom('notificationInAppItems')
+          .selectAll()
+          .where('title', 'like', '%继任候选推荐%')
+          .execute(),
+      // Delivery is queued per recipient; the first row need not belong to the superior.
+      (rows) => rows.some((row) => row.userId === east),
     );
     const text = JSON.stringify(notices);
     expect(text).toContain(east);

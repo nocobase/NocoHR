@@ -4,6 +4,7 @@ export default createApplicationConfig({
   tsconfigRootDir: import.meta.dirname,
   ignores: [
     '.extension-state/**',
+    '.claude/worktrees/**',
     'client-old/**',
     'public/r/**',
     'storage/**',

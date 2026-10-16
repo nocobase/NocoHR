@@ -86,7 +86,7 @@ function CourseBody({
   const [videoReady, setVideoReady] = useState<Record<string, boolean>>({});
   const offline = data.course.deliveryMode === 'offline';
   // When the current lesson was opened; set by the effect below whenever the lesson changes.
-  const openedAt = useRef(0);
+  const openedAtRef = useRef(0);
   const lesson = data.lessons[index];
   const done = data.lessons.filter((l) => l.completed).length;
   const progress = data.lessons.length
@@ -94,7 +94,7 @@ function CourseBody({
     : 0;
 
   useEffect(() => {
-    openedAt.current = Date.now();
+    openedAtRef.current = Date.now();
   }, [index]);
 
   async function complete(): Promise<void> {
@@ -108,7 +108,9 @@ function CourseBody({
           courseId: data.course.id,
           lessonId: lesson.id,
           assignmentId: data.assignment?.id ?? null,
-          durationSeconds: Math.round((Date.now() - openedAt.current) / 1000),
+          durationSeconds: Math.round(
+            (Date.now() - openedAtRef.current) / 1000,
+          ),
         },
       });
       const finished = result.data.lessons.every((l) => l.completed);

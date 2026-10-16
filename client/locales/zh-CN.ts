@@ -1,3 +1,4 @@
+import systemZhCN from './system/zh-CN.js';
 import { coreHrAdditions } from './modules/core-hr-additions.js';
 // V3-10
 import { examAdditions } from './modules/exam-additions.js';
@@ -23,6 +24,27 @@ import { payrollOpeningAdditions } from './modules/payroll-opening.js';
 import type { AppResource } from './en-US.js';
 
 const zhCN: AppResource = {
+  ...systemZhCN,
+  // Application-owned Settings and Dev shells retained across the client-3 upgrade.
+  'status.loadingSettings': '正在加载设置',
+  'status.loadingDev': '正在加载开发工具',
+  surface: {
+    backToApp: '返回应用',
+    loading: '正在加载{{title}}',
+    navigation: '{{title}}导航',
+    page: '{{title}}页面',
+  },
+  settings: {
+    title: '设置',
+    emptyTitle: '暂无可用设置',
+    emptyDescription: '没有已启用的插件提供你有权访问的设置页面。',
+  },
+  dev: {
+    componentExamples: '组件示例',
+    title: '开发工具',
+    emptyTitle: '暂无可用开发工具',
+    emptyDescription: '没有已启用的插件提供你有权访问的开发页面。',
+  },
   // AI chat tool-call cards (client/extensions/nocobase-ai/components/chat/tool-call-card.tsx).
   aiTools: aiToolNames.zh,
   // V1-02 additions (client/locales/modules/core-hr-additions.ts).
@@ -1260,140 +1282,28 @@ const zhCN: AppResource = {
     discardDescription: '未保存的修改将丢失，页面将加载最新设置。',
     discard: '放弃修改',
   },
-  'auth.welcome': '欢迎回来',
-  'auth.loginDescription': '使用用户名或邮箱和密码登录。',
-  'auth.registerTitle': '创建账户',
-  'auth.registerDescription': '创建账户以开始使用。',
-  'auth.forgotTitle': '忘记密码',
-  'auth.forgotDescription': '输入邮箱，如果账户存在，我们将发送重置链接。',
-  'auth.resetTitle': '重置密码',
-  'auth.resetDescription': '为账户设置新密码。',
-  'auth.identifier': '用户名或邮箱',
-  'auth.password': '密码',
-  'auth.signIn': '登录',
-  'auth.signingIn': '正在登录…',
-  'auth.hidePassword': '隐藏密码',
-  'auth.showPassword': '显示密码',
-  'auth.forgotLink': '忘记密码？',
-  'auth.noAccount': '还没有账户？',
-  'auth.signUp': '注册',
-  'auth.createAccount': '创建账户',
-  'auth.creatingAccount': '正在创建账户…',
-  'auth.name': '姓名',
-  'auth.username': '用户名',
-  'auth.email': '邮箱',
-  'auth.confirmPassword': '确认密码',
-  'auth.existingAccount': '已有账户？',
-  'auth.resetting': '正在重置…',
-  'auth.newPassword': '新密码',
-  'auth.confirmNewPassword': '确认新密码',
-  'auth.invalidResetLink': '此密码重置链接无效或已过期。',
-  'auth.backToSignIn': '返回登录',
-  'auth.sendResetLink': '发送重置链接',
-  'auth.sending': '正在发送…',
-  'auth.resetSent': '如果账户存在，重置链接已发送。',
-  'auth.rememberPassword': '记得密码？',
-  'auth.methods': '登录方式',
-  'auth.or': '或使用以下方式继续',
-  'auth.continueWith': '使用 {provider} 继续',
-  'auth.about': '关于此应用',
-  'auth.marketingDescription':
-    '让 AI 在灵活的前端框架上构建体验，由 NocoBase 保障底层数据、权限、工作流与治理。',
-  'auth.platform': 'AI 原生应用平台',
-  'auth.frontendDescription': '在灵活的框架上自由构建界面。',
-  'auth.frontend': 'AI 原生前端',
-  'auth.foundationDescription': '可靠的数据、访问控制、工作流与治理。',
-  'auth.foundation': 'NocoBase 基础能力',
-  'auth.marketingFooter': '自由构建，可靠支撑。',
-  'auth.marketingTitleFirst': '让 AI 自由构建。',
-  'auth.marketingTitleSecond': 'NocoBase 保障',
-  'auth.marketingTitleThird': '可靠运行。',
-  'status.loading': '加载中',
-  'status.loadingPage': '正在加载页面',
-  'status.loadingSettings': '正在加载设置',
-  'status.loadingDev': '正在加载开发工具',
-  'status.denied': '无权访问',
-  'status.pageFailed': '无法加载页面',
-  'status.retry': '重试',
+
   'navigation.brandHome': 'NocoHR 首页',
-  'navigation.brandApps': 'NocoBase 应用',
-  'auth.passwordMismatch': '两次输入的密码不一致。',
-  'routeOverlay.close': '关闭',
-  'status.deniedDescription': '你没有访问 {{label}} 的权限。',
+
   'status.thisPage': '此页面',
-  'status.routeFailedDescription':
-    '无法加载 {{packageName}} 的路由 {{label}}。',
-  shell: {
-    workspace: 'AI 应用工作区',
-    buildFreely: 'AI 自由构建。',
-    reliability: '<brand>NocoBase</brand> 保障可靠。',
-  },
-  surface: {
-    backToApp: '返回应用',
-    loading: '正在加载{{title}}',
-    navigation: '{{title}}导航',
-    page: '{{title}}页面',
-  },
-  settings: {
-    title: '设置',
-    emptyTitle: '暂无可用设置',
-    emptyDescription: '没有已启用的插件提供你有权访问的设置页面。',
-  },
-  dev: {
-    componentExamples: '组件示例',
-    title: '开发工具',
-    emptyTitle: '暂无可用开发工具',
-    emptyDescription: '没有已启用的插件提供你有权访问的开发页面。',
-  },
+
   home: {
+    ...systemZhCN.home,
     title: '暂无可访问的页面',
     description: '你的账号还没有分配页面权限，请联系管理员开通。',
   },
 
-  appearance: {
-    title: '外观',
-    mode: '颜色模式',
-    preset: '主题',
-    light: '浅色',
-    dark: '深色',
-    system: '跟随系统',
-    themes: { default: '宽松', compact: '紧凑' },
-  },
-  app: {
-    title: 'NocoHR',
-  },
-  actions: {
-    close: '关闭',
-    save: '保存',
-    cancel: '取消',
-    confirm: '确认',
-    language: '语言',
-    loading: '加载中',
-  },
-  notices: {
-    serverLocaleFallback: '服务端不支持该语言，服务端内容已回落为英文。',
-    languageChangeFailed: '未能完成语言切换，请重试。',
-  },
-  account: {
-    signOutFailed: '退出登录失败，请重试。',
-    openMenu: '打开账户菜单',
-    fallback: '账户',
-    signOut: '退出登录',
-    signingOut: '正在退出…',
-  },
+  app: { ...systemZhCN.app, title: 'NocoHR' },
+  actions: { ...systemZhCN.actions, loading: '加载中' },
+
   navigation: {
+    ...systemZhCN.navigation,
     ...coreHrAdditions.zh.navigation,
-    // V3-10
     ...examAdditions.zh.navigation,
-    // V3-11
     ...profileAdditions.zh.navigation,
-    // V4-12
     ...performanceAdditions.zh.navigation,
-    // V4-13
     ...talentReviewAdditions.zh.navigation,
-    // V4-14
     ...licensedAdditions.zh.navigation,
-    // 上线准备 · 清单与账号激活
     ...goLiveAdditions.zh.navigation,
     talentSelfService: '自助',
     aiEntry: 'AI 入口',
@@ -1443,35 +1353,8 @@ const zhCN: AppResource = {
     talentHrReports: '人事报表',
     talentOrgChart: '组织架构',
     talentDepartments: '组织管理',
-    open: '打开导航',
-    close: '关闭导航',
-    expand: '展开导航',
-    collapse: '收起导航',
-    toggle: '展开或收起导航',
-    label: '应用导航',
-    description: '前往本应用的页面。',
-    breadcrumb: '面包屑',
-    back: '返回',
   },
-  dataTable: {
-    noResults: '暂无数据。',
-    sortAscending: '升序',
-    sortDescending: '降序',
-    hideColumn: '隐藏',
-    view: '视图',
-    toggleColumns: '显示列',
-    selectedCount: '已选择 {{selected}} / {{total}} 行。',
-    rowsPerPage: '每页行数',
-    pageOf: '第 {{page}} 页，共 {{pageCount}} 页',
-    firstPage: '第一页',
-    previousPage: '上一页',
-    nextPage: '下一页',
-    lastPage: '最后一页',
-  },
-  datePicker: {
-    placeholder: '选择日期',
-    rangePlaceholder: '选择日期范围',
-  },
+
   demo: {
     batch: {
       description:

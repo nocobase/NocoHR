@@ -187,8 +187,8 @@ export default function TrainingReportsPage(): ReactElement {
   });
   const [departmentId, setDepartmentId] = useState('');
   const [positionId, setPositionId] = useState('');
-  const [from, setFrom] = useState(isoDate(-364));
-  const [to, setTo] = useState(isoDate(0));
+  const [from, setFrom] = useState(() => isoDate(-364));
+  const [to, setTo] = useState(() => isoDate(0));
   const [detail, setDetail] = useState<MetricKey | null>(null);
   const report = useRemote<TrainingReport>('talent/training-report', {
     departmentId: departmentId || undefined,
@@ -490,6 +490,13 @@ function DetailTable({
     // The attendance list's status is an enrollment status, labelled apart from task statuses.
     (row) => (list === 'attendance' ? { ...row, attendance: row.status } : row),
   );
+  const occurrences = new Map<string, number>();
+  const keyedRows = rows.map((row) => {
+    const content = JSON.stringify(row);
+    const occurrence = (occurrences.get(content) ?? 0) + 1;
+    occurrences.set(content, occurrence);
+    return { row, key: `${content}:${occurrence}` };
+  });
   const cell = (column: string, value: unknown): string => {
     if (typeof value === 'boolean')
       return value ? t('talent.common.yes') : t('talent.common.no');
@@ -527,8 +534,8 @@ function DetailTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map((row, index) => (
-          <TableRow key={index}>
+        {keyedRows.map(({ row, key }) => (
+          <TableRow key={key}>
             {columns[list].map((column) => (
               <TableCell key={column}>{cell(column, row[column])}</TableCell>
             ))}

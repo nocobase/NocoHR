@@ -45,9 +45,9 @@ describe('client plugin registry consistency', () => {
       expect(plugin?.routes).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            parent: 'settings',
+            parent: 'app',
             routes: expect.arrayContaining([
-              expect.objectContaining({ path: routePath }),
+              expect.objectContaining({ path: `/settings${routePath}` }),
             ]),
           }),
         ]),

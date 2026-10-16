@@ -3,6 +3,8 @@ import {
   type AppConfigFactory,
 } from '@nocobase/app-server/config';
 import auth from './auth.js';
+import secrets from './secrets.js';
+import users from './users.js';
 import authorization from './authorization.js';
 import notification from './notification.js';
 import session from './session.js';
@@ -37,6 +39,8 @@ import publicEndpoints from './public-endpoints.js';
 
 const defaultConfigs: AppConfigFactory<{
   auth: ReturnType<typeof auth>;
+  secrets: ReturnType<typeof secrets>;
+  users: ReturnType<typeof users>;
   authorization: ReturnType<typeof authorization>;
   notification: ReturnType<typeof notification>;
   session: ReturnType<typeof session>;
@@ -64,6 +68,8 @@ const defaultConfigs: AppConfigFactory<{
   publicEndpoints: ReturnType<typeof publicEndpoints>;
 }> = defaultAppConfigs({
   auth,
+  secrets,
+  users,
   authorization,
   notification,
   session,

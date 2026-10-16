@@ -20,6 +20,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { ComponentType, ReactElement } from 'react';
 import { Outlet, MemoryRouter } from 'react-router';
@@ -51,7 +52,7 @@ describe('application shell', () => {
     expect(
       await screen.findByRole('navigation', { name: 'Application navigation' }),
     ).toBeVisible();
-    expect(await screen.findByRole('link', { name: 'Home' })).toHaveAttribute(
+    expect(await findNavigationLink('Home')).toHaveAttribute(
       'aria-current',
       'page',
     );
@@ -60,10 +61,10 @@ describe('application shell', () => {
         .getByRole('complementary', { name: 'Application navigation' })
         .querySelector('[data-sidebar="sidebar"]'),
     ).toHaveClass('bg-sidebar');
-    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
+    expect(navigation().getByRole('link', { name: 'Home' })).toHaveAttribute(
       'data-active',
     );
-    expect(screen.getByRole('link', { name: 'Home' })).toHaveClass(
+    expect(navigation().getByRole('link', { name: 'Home' })).toHaveClass(
       'data-active:bg-sidebar-primary',
       'data-active:text-sidebar-primary-foreground',
       'ring-sidebar-ring',
@@ -155,9 +156,9 @@ describe('application shell', () => {
     expect(await screen.findByText('Order detail')).toBeVisible();
     expect(screen.getByText('Orders layout')).toBeVisible();
     expect(
-      screen.getByRole('link', { name: 'Orders' }).querySelector('svg'),
+      navigation().getByRole('link', { name: 'Orders' }).querySelector('svg'),
     ).toBeNull();
-    expect(screen.getByRole('link', { name: 'Orders' })).toHaveAttribute(
+    expect(navigation().getByRole('link', { name: 'Orders' })).toHaveAttribute(
       'aria-current',
       'page',
     );
@@ -181,7 +182,7 @@ describe('application shell', () => {
       children: [child],
     };
     renderApplication('/orders', true, [parent]);
-    expect(await screen.findByRole('link', { name: 'Orders' })).toHaveAttribute(
+    expect(await findNavigationLink('Orders')).toHaveAttribute(
       'href',
       '/orders',
     );
@@ -190,7 +191,7 @@ describe('application shell', () => {
     expect(
       screen.queryByRole('link', { name: 'Reports' }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Orders' })).toBeVisible();
+    expect(navigation().getByRole('link', { name: 'Orders' })).toBeVisible();
     fireEvent.click(toggle);
     fireEvent.click(screen.getByRole('link', { name: 'Reports' }));
     expect(await screen.findByText('Reports page')).toBeVisible();
@@ -310,7 +311,7 @@ function renderApplication(
   ]);
   const app = {
     config: createAppClientConfig({ rawConfig: {} }),
-    runtime: { settingsRouteTree: options.settingsRouteTree ?? [] },
+    runtime: { routes: options.settingsRouteTree ?? [] },
     services: {
       has: (token: unknown) => registered.has(token),
       resolve: (token: unknown) => {
@@ -390,4 +391,15 @@ function HomePage(): ReactElement {
 
 function GuestPage(): ReactElement {
   return <div>Guest login page</div>;
+}
+
+function navigation() {
+  return within(
+    screen.getByRole('navigation', { name: 'Application navigation' }),
+  );
+}
+async function findNavigationLink(name: string) {
+  return within(
+    await screen.findByRole('navigation', { name: 'Application navigation' }),
+  ).findByRole('link', { name });
 }

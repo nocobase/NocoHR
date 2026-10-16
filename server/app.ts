@@ -1,4 +1,6 @@
 import type { Application } from '@nocobase/app-server/application';
+import { MailerProvider } from '@nocobase/app-server/mailer';
+import { SecretsProvider } from '@nocobase/app-server/secrets';
 import { DatabaseProvider } from '@nocobase/app-server/database';
 import { I18nProvider, i18nHttpMiddleware } from '@nocobase/app-server/i18n';
 import { CachingProvider } from '@nocobase/app-server/caching';
@@ -31,8 +33,10 @@ export function createApp(runtime: AppRuntimeContext): Application {
   app.addServiceProvider(LoggingProvider);
   app.addServiceProvider(CachingProvider);
   app.addServiceProvider(IdGeneratorProvider);
+  app.addServiceProvider(SecretsProvider);
   app.addServiceProvider(SessionProvider);
   app.addServiceProvider(DriveProvider);
+  app.addServiceProvider(MailerProvider);
   app.addServiceProvider(QueueServiceProvider, {
     nodeEnv: runtime.env.NODE_ENV,
   });

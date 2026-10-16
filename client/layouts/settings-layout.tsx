@@ -96,6 +96,7 @@ export function SettingsLayout({
         })}
       >
         <NavigationMenu
+          sections={false}
           items={navEntries}
           label={copy.title}
           selectedKey={selectedKey}

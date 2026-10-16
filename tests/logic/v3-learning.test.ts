@@ -162,7 +162,7 @@ afterAll(async () => {
   await server?.close();
   delete process.env.HR_DEMO_PASSWORD;
   if (directory) rmSync(directory, { recursive: true, force: true });
-});
+}, 120_000);
 
 async function services() {
   const container = server.application.container;

@@ -31,7 +31,7 @@ vi.mock('@nocobase/app-plugin-i18n/client', async (importOriginal) => ({
 }));
 vi.mock('@nocobase/app-client', async (original) => ({
   ...(await original<typeof import('@nocobase/app-client')>()),
-  useClientApplication: () => ({ runtime: { settingsRouteTree: [] } }),
+  useClientApplication: () => ({ runtime: { routes: [] } }),
 }));
 vi.mock('../../client/routing/route-navigation.js', async (original) => ({
   ...(await original<
@@ -88,9 +88,10 @@ it('provides business route breadcrumbs to its outlet without an outer provider'
     </MemoryRouter>,
     { wrapper: I18n },
   );
-  expect(screen.getByRole('link', { name: 'Orders' })).toHaveAttribute(
-    'href',
-    '/orders',
-  );
-  expect(screen.getByText('Detail')).toHaveAttribute('aria-current', 'page');
+  for (const link of screen.getAllByRole('link', { name: 'Orders' })) {
+    expect(link).toHaveAttribute('href', '/orders');
+  }
+  for (const detail of screen.getAllByText('Detail')) {
+    expect(detail).toHaveAttribute('aria-current', 'page');
+  }
 });

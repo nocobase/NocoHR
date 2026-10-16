@@ -1,3 +1,4 @@
+import { filterRouteSurface } from '../routing/surface-routes.js';
 import { useTranslation } from '@nocobase/i18n/client';
 import type { AppClientRegisteredRoute } from '@nocobase/app-client/plugins';
 import { ArrowLeft } from 'lucide-react';
@@ -50,9 +51,12 @@ export function DevLayout({
   };
 
   const { items: navEntries, loading, denied } = useRouteNavigation(routeTree);
-  const settingsNavigation = useRouteNavigation(
-    useClientApplication().runtime.settingsRouteTree,
+  const runtimeRoutes = useClientApplication().runtime.routes;
+  const settingsTree = useMemo(
+    () => filterRouteSurface(runtimeRoutes, '/settings'),
+    [runtimeRoutes],
   );
+  const settingsNavigation = useRouteNavigation(settingsTree);
   const selectedKey = selectedNavigationId(
     routeTree,
     location.pathname,
@@ -98,6 +102,7 @@ export function DevLayout({
         })}
       >
         <NavigationMenu
+          sections={false}
           items={navEntries}
           label={copy.title}
           selectedKey={selectedKey}

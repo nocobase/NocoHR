@@ -78,11 +78,11 @@ function PracticeBody({ initial }: { initial: Practice }): ReactElement {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState<'reply' | 'finish' | 'again' | null>(null);
   const [confirmFinish, setConfirmFinish] = useState(false);
-  const end = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
   const inProgress = data.status === 'inProgress';
 
   useEffect(() => {
-    end.current?.scrollIntoView({ block: 'end' });
+    endRef.current?.scrollIntoView({ block: 'end' });
   }, [data.transcript?.length]);
 
   async function send(): Promise<void> {
@@ -216,9 +216,9 @@ function PracticeBody({ initial }: { initial: Practice }): ReactElement {
                 className='max-h-[55svh] space-y-3 overflow-y-auto pr-1'
                 aria-live='polite'
               >
-                {(data.transcript ?? []).map((turn, index) => (
+                {(data.transcript ?? []).map((turn) => (
                   <div
-                    key={`${turn.at}-${index}`}
+                    key={`${turn.at}-${turn.role}`}
                     className={cn(
                       'flex gap-2',
                       turn.role === 'employee' && 'flex-row-reverse',
@@ -257,7 +257,7 @@ function PracticeBody({ initial }: { initial: Practice }): ReactElement {
                     <Spinner /> {t('talent.practice.thinking')}
                   </p>
                 ) : null}
-                <div ref={end} />
+                <div ref={endRef} />
               </div>
               {data.coachSuggestsEnd && inProgress ? (
                 <Alert>

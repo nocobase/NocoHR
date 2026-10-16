@@ -8,11 +8,10 @@ import { describe, expect, it } from 'vitest';
 
 import clientPlugins from '../../client/plugins.js';
 
-// The plugins whose pages the permission workspace offers as page grants.
+// Plugins whose retained management UI uses page grants. AI administration now uses settings permissions, tested separately.
 const PAGE_GRANT_PLUGINS = [
   '@nocobase/app-plugin-users',
   '@nocobase/app-plugin-notification',
-  '@nocobase/app-plugin-ai-employee',
   '@nocobase/app-plugin-api-keys',
   '@nocobase/app-plugin-database-explorer',
 ];
@@ -26,10 +25,9 @@ describe('plugin page authorization', () => {
         routes: plugin.routes,
       })),
     );
-    const pages = entryPages([
-      ...resolved.routes,
-      ...resolved.settingsRouteTree,
-    ]).filter((route) => PAGE_GRANT_PLUGINS.includes(route.packageName));
+    const pages = entryPages([...resolved.routes]).filter((route) =>
+      PAGE_GRANT_PLUGINS.includes(route.packageName),
+    );
 
     // A page may check another resource type; each plugin still offers a page grant.
     const granted = pages.filter(

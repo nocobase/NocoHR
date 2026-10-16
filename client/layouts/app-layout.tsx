@@ -1,11 +1,17 @@
+import { filterRouteSurface } from '../routing/surface-routes.js';
 import { useSyncServerLocale } from '@nocobase/app-plugin-i18n/client';
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import type { AppClientRegisteredRoute } from '@nocobase/app-client/plugins';
 import { Outlet, useLocation } from 'react-router';
 
 import { RouteTreeProvider } from '../routing/route-context.js';
+import { Breadcrumbs } from '@/components/breadcrumbs';
+import { BrandWatermark } from '@/components/brand-watermark';
 
-import { useClientApplication } from '@nocobase/app-client';
+import {
+  PageBreadcrumbProvider,
+  useClientApplication,
+} from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
 import { LayoutHeader } from './components/layout-header.js';
 import {
@@ -39,9 +45,12 @@ export function AppLayout({
     useLocation().pathname,
     denied,
   );
-  const settingsNavigation = useRouteNavigation(
-    useClientApplication().runtime.settingsRouteTree,
+  const runtimeRoutes = useClientApplication().runtime.routes;
+  const settingsTree = useMemo(
+    () => filterRouteSurface(runtimeRoutes, '/settings'),
+    [runtimeRoutes],
   );
+  const settingsNavigation = useRouteNavigation(settingsTree);
   const navigationLabel = t('navigation.label', {
     defaultValue: 'Application navigation',
   });
@@ -49,47 +58,47 @@ export function AppLayout({
   return (
     // The shell owns the business route tree used by its pages and navigation.
     <RouteTreeProvider routes={routes}>
-      <AppSidebarProvider>
-        <AppSidebar label={navigationLabel} footer={<AppSidebarFooter />}>
-          <NavigationMenu
-            items={menuItems}
-            label={navigationLabel}
-            selectedKey={selectedKey}
-          />
-        </AppSidebar>
-        <div className='flex min-w-0 flex-1 flex-col'>
-          <LayoutHeader className='sticky top-0 z-40 justify-between'>
-            <div className='flex min-w-0 items-center gap-3'>
-              <AppSidebarToggle />
-              <div className='md:hidden'>
-                <AppBrand />
-              </div>
-              <div className='hidden h-5 w-px bg-border md:block' />
-              <p className='hidden truncate text-sm font-medium text-muted-foreground md:block'>
-                {t('shell.workspace', {
-                  defaultValue: 'AI application workspace',
-                })}
-              </p>
-            </div>
-            <HeaderActions
-              showSettings={
-                navigationPages(settingsNavigation.items).length > 0
-              }
-              showDev={import.meta.env.DEV}
+      <PageBreadcrumbProvider>
+        <AppSidebarProvider>
+          <AppSidebar label={navigationLabel} footer={<AppSidebarFooter />}>
+            <NavigationMenu
+              sections={false}
+              items={menuItems}
+              label={navigationLabel}
+              selectedKey={selectedKey}
             />
-          </LayoutHeader>
-          <main className='relative min-w-0 flex-1 overflow-hidden'>
-            {/* main only positions; the page scrolls in here, so a child page layer laid over main is neither
+          </AppSidebar>
+          <div className='flex min-w-0 flex-1 flex-col'>
+            <LayoutHeader className='sticky top-0 z-40 justify-between'>
+              <div className='flex min-w-0 items-center gap-3'>
+                <AppSidebarToggle />
+                <div className='md:hidden'>
+                  <AppBrand />
+                </div>
+                <div className='hidden h-5 w-px bg-border md:block' />
+                <Breadcrumbs denied={denied} />
+              </div>
+              <HeaderActions
+                showSettings={
+                  navigationPages(settingsNavigation.items).length > 0
+                }
+                showDev={import.meta.env.DEV}
+              />
+            </LayoutHeader>
+            <main className='app-brand-surface relative isolate min-w-0 flex-1 overflow-hidden'>
+              <BrandWatermark className='-z-10' />
+              {/* main only positions; the page scrolls in here, so a child page layer laid over main is neither
             moved by the page's scrolling nor stretched by its height. */}
-            <div className='h-full overflow-y-auto'>
-              <Outlet />
-            </div>
-          </main>
-          {/* Application addition: phones get a employee tab bar (学习 · 考试 · 问答 · 自助 · 我的) under main, because the
+              <div className='h-full overflow-y-auto'>
+                <Outlet />
+              </div>
+            </main>
+            {/* Application addition: phones get a employee tab bar (学习 · 考试 · 问答 · 自助 · 我的) under main, because the
           sidebar drawer is too far away for pages employees open daily. It reads the same authorized items. */}
-          <MobileTabBar items={menuItems} />
-        </div>
-      </AppSidebarProvider>
+            <MobileTabBar items={menuItems} />
+          </div>
+        </AppSidebarProvider>
+      </PageBreadcrumbProvider>
     </RouteTreeProvider>
   );
 }

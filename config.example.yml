@@ -38,9 +38,16 @@ users:
     email: admin@nocobase.com # stored lowercase; also signs in
     password: admin123
 
+# Master keys encrypt stored credentials and derive sign-in/session keys. New installations generate
+# these with `pnpm nocobase config init`; existing installations follow the upgrade diagnostics.
+# Keep actual values in config.yml or SECRETS_KEYS, never in source control.
+secrets:
+  keys:
+    - version: 1
+      key: replace-with-a-unique-secret
+
 auth:
   # Generate a unique secret, for example with: openssl rand -hex 32
-  secret: replace-with-a-unique-secret
   emailAndPassword:
     enabled: true
     autoSignIn: false
@@ -52,7 +59,6 @@ auth:
 
 session:
   # Use the same generated value as auth.secret, or another unique secret.
-  secret: replace-with-a-unique-secret
 
 # The employer named on certificates, offer letters, departed employees' documents and the mails that carry them.
 # Required in production: the server refuses to start, and `pnpm nocobase config check` fails, while it is empty.

@@ -71,7 +71,7 @@ async function setup(children: ReactNode, path = '/') {
   await runtime.init('en-US');
   const app = {
     config: createAppClientConfig({ rawConfig: {} }),
-    runtime: { settingsRouteTree: [route] },
+    runtime: { routes: [route] },
   } as unknown as ClientApplication;
   render(
     <I18nProvider runtime={runtime}>
@@ -86,14 +86,16 @@ async function setup(children: ReactNode, path = '/') {
 describe('shell translations', () => {
   it('updates header, footer, tooltips and accessible labels without remounting', async () => {
     const runtime = await setup(<AppLayout routes={[]} />);
-    expect(screen.getByText('AI application workspace')).toBeVisible();
+    expect(
+      screen.getByRole('navigation', { name: 'Application navigation' }),
+    ).toBeVisible();
     expect(screen.getByText('AI builds freely.')).toBeVisible();
     await act(() => runtime.changeLanguage('zh-CN'));
-    expect(screen.getByText('AI 应用工作区')).toBeVisible();
-    expect(screen.getByText('AI 自由构建。')).toBeVisible();
+    expect(screen.getByRole('navigation', { name: '应用导航' })).toBeVisible();
+    expect(screen.getByText('AI 自由构建')).toBeVisible();
     expect(
       screen.getByRole('link', { name: 'NocoBase' }).parentElement,
-    ).toHaveTextContent('NocoBase 保障可靠。');
+    ).toHaveTextContent('NocoBase 保障可靠');
     expect(
       screen.getByRole('button', { name: '展开或收起导航' }),
     ).toHaveAttribute('title', '展开或收起导航');
@@ -126,7 +128,9 @@ describe('shell translations', () => {
         selector: '[data-slot=tooltip-content]',
       }),
     ).toBeVisible();
-    expect(screen.getByText('AI application workspace')).toBeVisible();
+    expect(
+      screen.getByRole('navigation', { name: 'Application navigation' }),
+    ).toBeVisible();
     await user.unhover(examples);
     act(() => settings.focus());
     expect(

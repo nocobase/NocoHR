@@ -1,4 +1,8 @@
 import {
+  defineDevRoutes,
+  defineSettingsRoutes,
+} from './routing/surface-routes.js';
+import {
   Award,
   Bot,
   BarChart3,
@@ -84,8 +88,6 @@ import {
 import { Rocket } from 'lucide-react';
 import {
   defineAppRoutes,
-  defineDevRoutes,
-  defineSettingsRoutes,
   type AppClientRouteContribution,
 } from '@nocobase/app-client/plugins';
 
@@ -93,6 +95,13 @@ const page = (id: string) =>
   ({ resource: { type: 'page', id }, action: 'access' }) as const;
 
 const appRoutes: AppClientRouteContribution = defineAppRoutes([
+  {
+    name: 'device',
+    path: '/device',
+    auth: 'optional',
+    authz: 'skip',
+    componentLoader: () => import('./pages/auth/device.js'),
+  },
   {
     // Every signed-in user reaches the landing page. `authz: 'skip'` takes it out of page authorization entirely, so
     // no permission change can leave a user signed in with nowhere to land. It has no menu entry: the page forwards
@@ -1722,16 +1731,18 @@ const settingsRoutes: AppClientRouteContribution = defineSettingsRoutes([
   },
 ]);
 
-const devRoutes: AppClientRouteContribution = defineDevRoutes([
-  {
-    // 模拟渠道（仅开发环境）(V1-04): send office-suite bot messages as a directory member, without a real bot.
-    name: 'talent-im-mock',
-    path: '/im-mock',
-    authz: 'skip',
-    navigation: { title: 'navigation.imMock', icon: RadioTower },
-    componentLoader: () => import('./pages/dev/im-mock.js'),
-  },
-]);
+const devRoutes: AppClientRouteContribution = import.meta.env.PROD
+  ? defineAppRoutes([])
+  : defineDevRoutes([
+      {
+        // 模拟渠道（仅开发环境）(V1-04): send office-suite bot messages as a directory member, without a real bot.
+        name: 'talent-im-mock',
+        path: '/im-mock',
+        authz: 'skip',
+        navigation: { title: 'navigation.imMock', icon: RadioTower },
+        componentLoader: () => import('./pages/dev/im-mock.js'),
+      },
+    ]);
 
 const routes: readonly AppClientRouteContribution[] = [
   appRoutes,

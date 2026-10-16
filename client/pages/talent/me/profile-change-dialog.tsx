@@ -47,17 +47,20 @@ const DEGREES = [
   'other',
 ] as const;
 
-type Row = Record<string, string>;
+// Symbol keys survive row edits but never enter JSON or the business payload.
+const ROW_KEY = Symbol('profile-row');
+type Row = Record<string, string> & { [ROW_KEY]: string };
 
 function rowsOf(
   items: readonly Record<string, unknown>[],
   keys: readonly string[],
 ): Row[] {
-  return items.map((item) =>
-    Object.fromEntries(
+  return items.map((item) => ({
+    ...Object.fromEntries(
       keys.map((k) => [k, item[k] == null ? '' : str(item[k])]),
     ),
-  );
+    [ROW_KEY]: crypto.randomUUID(),
+  }));
 }
 
 function same(a: unknown, b: unknown): boolean {
@@ -139,8 +142,12 @@ export function ProfileChangeDialog({
     }));
   const addRow = (
     kind: 'educations' | 'experiences' | 'emergencyContacts',
-    row: Row,
-  ) => setDraft((d) => ({ ...d, [kind]: [...d[kind], row] }));
+    row: Record<string, string>,
+  ) =>
+    setDraft((d) => ({
+      ...d,
+      [kind]: [...d[kind], { ...row, [ROW_KEY]: crypto.randomUUID() }],
+    }));
   const removeRow = (
     kind: 'educations' | 'experiences' | 'emergencyContacts',
     index: number,
@@ -296,7 +303,7 @@ export function ProfileChangeDialog({
                 </FieldLegend>
                 {draft.emergencyContacts.map((row, index) => (
                   <div
-                    key={index}
+                    key={row[ROW_KEY]}
                     className='grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2'
                   >
                     <Input
@@ -373,7 +380,7 @@ export function ProfileChangeDialog({
                 <FieldLegend>{t('talent.profile.educations')}</FieldLegend>
                 {draft.educations.map((row, index) => (
                   <div
-                    key={index}
+                    key={row[ROW_KEY]}
                     className='grid grid-cols-2 items-end gap-2 sm:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto]'
                   >
                     <Input
@@ -468,7 +475,7 @@ export function ProfileChangeDialog({
                 <FieldLegend>{t('talent.profile.experiences')}</FieldLegend>
                 {draft.experiences.map((row, index) => (
                   <div
-                    key={index}
+                    key={row[ROW_KEY]}
                     className='grid grid-cols-2 items-end gap-2 sm:grid-cols-[2fr_1fr_1fr_1fr_auto]'
                   >
                     <Input

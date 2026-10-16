@@ -98,31 +98,37 @@ export default function MyMailboxPage(): ReactElement {
       .finally(() => setSavingOffer(undefined));
   };
 
-  const refresh = useCallback(() => {
-    void Promise.all([mail.listProviders(), mail.listAccounts()])
-      .then(([p, a]) => {
-        setProviders(p);
-        setAccounts(a);
-      })
-      .catch((cause: unknown) =>
-        setError(mailErrorMessage(cause, t('myMailbox.loadFailed'))),
-      );
+  const refresh = useCallback(async () => {
+    try {
+      const [p, a] = await Promise.all([
+        mail.listProviders(),
+        mail.listAccounts(),
+      ]);
+      setProviders(p);
+      setAccounts(a);
+    } catch (cause: unknown) {
+      setError(mailErrorMessage(cause, t('myMailbox.loadFailed')));
+    }
   }, [mail, t]);
 
-  useEffect(() => refresh(), [refresh]);
+  useEffect(() => {
+    void Promise.resolve().then(refresh);
+  }, [refresh]);
 
   // Removal finishes in the background: while an account is being removed, look again every two seconds.
   const removing = (accounts ?? []).some((a) => a.status === 'removing');
   useEffect(() => {
     if (!removing) return;
-    const timer = window.setInterval(refresh, 2000);
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, 2000);
     return () => window.clearInterval(timer);
   }, [removing, refresh]);
 
   const done = () => {
     setConnecting(undefined);
     setShowConnector(false);
-    refresh();
+    void refresh();
   };
 
   const labels = {
@@ -314,7 +320,7 @@ export default function MyMailboxPage(): ReactElement {
                                   next.delete('mailAuthorization');
                                   setParams(next, { replace: true });
                                 }
-                                refresh();
+                                void refresh();
                               })
                               .catch((cause: unknown) =>
                                 toast.add({

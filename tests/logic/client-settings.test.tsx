@@ -727,7 +727,7 @@ function renderWithAuthentication(
     [authorizationClientToken, authorizationClient],
   ]);
   const app = {
-    runtime: { settingsRouteTree },
+    runtime: { routes: settingsRouteTree },
     services: {
       has: (token: unknown) => registered.has(token),
       resolve: (token: unknown) => {

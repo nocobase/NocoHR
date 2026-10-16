@@ -10,6 +10,7 @@ import { AppLayout } from '../layouts/app-layout.js';
 import { GuestOnly, RequireSignIn } from './authentication-gates.js';
 import { renderRouteTree } from './route-tree.js';
 import { StandalonePageLayout } from './standalone-page-layout.js';
+import { filterRouteSurface } from './surface-routes.js';
 
 // The settings centre brings its own chrome and navigation, none of which the application needs until someone opens
 // it. Loading it lazily keeps it out of the entry chunk, the same way every page it hosts stays out.
@@ -27,31 +28,46 @@ const DevLayout = import.meta.env.DEV
   : undefined;
 
 export interface AppRouterProps {
-  readonly settingsRouteTree: readonly AppClientRegisteredRoute[];
-  readonly devRouteTree: readonly AppClientRegisteredRoute[];
+  readonly settingsRouteTree?: readonly AppClientRegisteredRoute[];
+  readonly devRouteTree?: readonly AppClientRegisteredRoute[];
   readonly clientRoutes: readonly AppClientRegisteredRoute[];
 }
 
 export function AppRouter(inputProps: AppRouterProps): ReactElement {
   const { t } = useTranslation();
-  const { settingsRouteTree, devRouteTree, clientRoutes } = inputProps;
+  const { clientRoutes } = inputProps;
+  const settingsRouteTree = useMemo(
+    () =>
+      inputProps.settingsRouteTree ??
+      filterRouteSurface(clientRoutes, '/settings'),
+    [inputProps.settingsRouteTree, clientRoutes],
+  );
+  const devRouteTree = useMemo(
+    () => inputProps.devRouteTree ?? filterRouteSurface(clientRoutes, '/dev'),
+    [inputProps.devRouteTree, clientRoutes],
+  );
 
   const settingsRoutes = useMemo(
     () =>
-      filterRouteTree(
-        clientRoutes,
-        (route) =>
-          route.auth === 'required' && route.path.startsWith('/settings/'),
-      ),
-    [clientRoutes],
+      inputProps.settingsRouteTree
+        ? filterRouteTree(
+            clientRoutes,
+            (route) =>
+              route.auth === 'required' && route.path.startsWith('/settings/'),
+          )
+        : EMPTY_ARRAY,
+    [inputProps.settingsRouteTree, clientRoutes],
   );
   const devRoutes = useMemo(
     () =>
-      filterRouteTree(
-        clientRoutes,
-        (route) => route.auth === 'required' && route.path.startsWith('/dev/'),
-      ),
-    [clientRoutes],
+      inputProps.devRouteTree
+        ? filterRouteTree(
+            clientRoutes,
+            (route) =>
+              route.auth === 'required' && route.path.startsWith('/dev/'),
+          )
+        : EMPTY_ARRAY,
+    [inputProps.devRouteTree, clientRoutes],
   );
   const routeGroups = useMemo(
     () => ({

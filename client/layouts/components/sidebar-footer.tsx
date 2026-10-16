@@ -4,12 +4,12 @@ import { useTranslation } from '@nocobase/i18n/client';
 import { ShieldCheck } from 'lucide-react';
 import type { ReactElement } from 'react';
 
-import { SidebarFooter, useSidebar } from '@/components/ui/sidebar';
+import { SidebarFooter, useSidebar } from '#components/ui/sidebar';
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/components/ui/tooltip';
+} from '#components/ui/tooltip';
 
 /**
  * The application's sidebar footer: the NocoBase slogan's two lines, then the template's name and its version, each
@@ -44,7 +44,7 @@ export function AppSidebarFooter(): ReactElement {
   );
 
   return (
-    <SidebarFooter className='shrink-0 border-t border-sidebar-border/70'>
+    <SidebarFooter className='shrink-0 border-t border-sidebar-border'>
       {/* The menu button's inset (`p-2`, `gap-2`), so the shield lines up with the menu icons above. */}
       <div className='flex min-w-0 items-start gap-2 p-2 text-xs leading-5'>
         <Tooltip>

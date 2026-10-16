@@ -294,7 +294,7 @@ function MonthCalendar({
     return map;
   }, [sessions]);
   const weekday = new Intl.DateTimeFormat(locale, { weekday: 'short' });
-  const today = key(new Date());
+  const [today] = useState(() => key(new Date()));
   return (
     <Card>
       <CardContent className='space-y-3'>

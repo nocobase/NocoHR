@@ -412,12 +412,12 @@ function AddMemberDialog({ departmentId, onClose, onSaved }: { departmentId: str
 function DepartmentDialog({ mode, parentId, department, departments, label, onClose, onSaved }: { mode: 'create' | 'edit'; parentId: string | null; department: Department | null; departments: Department[]; label: (d: Department) => string; onClose: () => void; onSaved: (id: string) => void }): ReactElement {
   const { t } = useTranslation();
   const api = useApiClient();
-  const [draft, setDraft] = useState({
+  const [draft, setDraft] = useState(() => ({
     title: department ? label(department) : '',
     code: department?.code ?? '',
     parentId: department ? (department.parentId ?? '') : (parentId ?? ''),
     managerId: department?.managerId ?? '',
-  });
+  }));
   const { definitions } = useCustomFieldDefinitions('departments', 'form');
   const [custom, setCustom] = useState<CustomValues>(() => department?.customFields ?? {});
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({});

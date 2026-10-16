@@ -1,8 +1,9 @@
+import { register } from 'tsx/esm/api';
 import { createApp } from '../../server/app.js';
 import authConfig from '../../server/config/auth.js';
 // @vitest-environment node
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestAppConfig,
   type TestAppConfig,
@@ -103,7 +104,13 @@ import {
 } from '../../server/standalone.ts';
 type AppConfig = object;
 
+// Database tasks load source seeds through Node, outside Vitest's module transformer.
+const unregisterSourceLoader = register({ tsconfig: './tsconfig.server.json' });
+afterAll(() => unregisterSourceLoader());
+
 process.env.AUTH_SECRET ??= 'test-auth-secret-at-least-32-characters';
+const TEST_MASTER_KEY =
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 interface CloseableResource {
   close(): Promise<void>;
@@ -344,10 +351,7 @@ describe('app server', () => {
             new Hono().get('/test-runtime', (c) => c.json({ ok: true })),
           ),
         ],
-        serviceProviders: [
-          ...appRuntime.serviceProviders,
-          TestRuntimeApplicationProvider,
-        ],
+        serviceProviders: [TestRuntimeApplicationProvider],
       },
       scope,
     );
@@ -1350,6 +1354,7 @@ async function createEmbeddedTestScope(
     ...options,
     env: {
       DB_MIGRATIONS_AUTO_RUN: 'true',
+      SECRETS_KEYS: `1:${TEST_MASTER_KEY}`,
       ...options.env,
       APP_CONFIG_FILE: options.rootDir
         ? undefined
@@ -1387,6 +1392,7 @@ async function createIsolatedStandaloneServer(
     ...options,
     env: {
       DB_MIGRATIONS_AUTO_RUN: 'true',
+      SECRETS_KEYS: `1:${TEST_MASTER_KEY}`,
       ...options.env,
       APP_CONFIG_FILE: await writeRuntimeTestConfig(databaseDir, options.env),
     },
@@ -1408,6 +1414,7 @@ function createInstalledStandaloneServer(
     env: {
       ...options.env,
       DB_MIGRATIONS_AUTO_RUN: 'true',
+      SECRETS_KEYS: `1:${TEST_MASTER_KEY}`,
       DB_SEEDS_AUTO_RUN: 'true',
     },
   });
@@ -1539,6 +1546,7 @@ async function writeRuntimeTestConfig(
     connections: ['main'],
     install: env.DB_MIGRATIONS_AUTO_RUN !== 'false',
     config: {
+      secrets: { keys: [{ version: 1, key: TEST_MASTER_KEY }] },
       auth: { secret: 'test-auth-secret-at-least-32-characters' },
       // Scheduled jobs keep their state beside the test database, not in the template's storage/, which
       // another suite may be using at the same time.

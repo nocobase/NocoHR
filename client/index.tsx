@@ -1,3 +1,4 @@
+import { revealScrollbarsWhileScrolling } from './lib/scrollbar';
 import { createApp } from './app.js';
 import {
   AppClientRoot,
@@ -22,6 +23,7 @@ if (!container) {
   throw new Error('Missing application root element.');
 }
 
+revealScrollbarsWhileScrolling();
 const root = createRoot(container);
 let app: ClientApplication | undefined;
 let applicationStarted = false;

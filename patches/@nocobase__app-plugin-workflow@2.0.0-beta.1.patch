@@ -1,0 +1,38 @@
+diff --git a/dist/client/surface-routes.js b/dist/client/surface-routes.js
+new file mode 100644
+--- /dev/null
++++ b/dist/client/surface-routes.js
+@@ -0,0 +1,14 @@
++import { defineAppRoutes } from '@nocobase/app-client/plugins';
++// NocoHR compatibility for plugins published before client 3 unified route contributions.
++function surfaceRoutes(routes, prefix) {
++    const map = (route, mounted = false) => ({
++        ...route,
++        auth: route.auth ?? 'required',
++        ...(route.path && !mounted && !route.parent ? { path: `${prefix}/${route.path.replace(/^\/+/, '')}` } : {}),
++        ...(prefix === '/dev' && route.componentLoader && route.authz == null ? { authz: 'skip' } : {}),
++        ...(route.children ? { children: route.children.map((child) => map(child, mounted || Boolean(route.path) || Boolean(route.parent))) } : {}),
++    });
++    return defineAppRoutes(routes.map((route) => map(route)));
++}
++export const defineSettingsRoutes = (routes) => surfaceRoutes(routes, '/settings');
++export const defineDevRoutes = (routes) => surfaceRoutes(import.meta.env?.PROD ? [] : routes, '/dev');
+diff --git a/dist/client/settings.js b/dist/client/settings.js
+--- a/dist/client/settings.js
++++ b/dist/client/settings.js
+@@ -1,4 +1,4 @@
+-import { defineSettingsRoutes, } from '@nocobase/app-client/plugins';
++import { defineSettingsRoutes, } from './surface-routes.js';
+ import { Workflow as WorkflowIcon, Zap } from 'lucide-react';
+ const settings = defineSettingsRoutes([
+     {
+diff --git a/dist/client/settings.d.ts b/dist/client/settings.d.ts
+--- a/dist/client/settings.d.ts
++++ b/dist/client/settings.d.ts
+@@ -1,4 +1,4 @@
+-import { type AppClientSettingsRoutesContribution } from '@nocobase/app-client/plugins';
+-declare const settings: AppClientSettingsRoutesContribution;
++import { type AppClientAppRoutesContribution } from '@nocobase/app-client/plugins';
++declare const settings: AppClientAppRoutesContribution;
+ export default settings;
+ //# sourceMappingURL=settings.d.ts.map

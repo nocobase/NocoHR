@@ -172,7 +172,7 @@ function renderApplication(initialEntry: string): { signIn: () => void } {
   ]);
   const app = {
     config: createAppClientConfig({ rawConfig: {} }),
-    runtime: { settingsRouteTree: [] },
+    runtime: { routes: [] },
     services: {
       has: (token: unknown) => registered.has(token),
       resolve: (token: unknown) => {

@@ -94,6 +94,15 @@
   --sidebar-accent-foreground: var(--foreground);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
+
+  --auth-brand-background: #101c3b;
+  --auth-brand-highlight: #8ca9ff;
+  --auth-brand-muted: #b8c4df;
+  --status-success: rgb(21 112 70);
+  --status-success-background: rgb(236 249 241);
+  --status-warning: rgb(150 79 10);
+  --status-warning-background: rgb(255 246 229);
+  --hover: color-mix(in srgb, var(--muted) 70%, var(--card));
 }
 
 :root.dark[data-theme='compact'],
@@ -141,6 +150,12 @@
   --sidebar-accent-foreground: var(--foreground);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
+
+  --status-success: rgb(119 216 160);
+  --status-success-background: rgb(23 49 37);
+  --status-warning: rgb(242 190 103);
+  --status-warning-background: rgb(57 43 24);
+  --hover: color-mix(in srgb, var(--muted) 70%, var(--card));
 }
 
 /* The Switch track is fixed in pixels while its thumb follows `--spacing`, so this preset's

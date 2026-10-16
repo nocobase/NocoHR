@@ -52,7 +52,8 @@ const interpolatedKey = /\bt\(\s*\x60([^\x60]*?)\x24\{/gu;
  * Application change: the AI chat extension (`client/extensions/nocobase-ai/`) translates through its own
  * `useAITranslate()` and `locales/`, so its files are not the application namespace's either.
  */
-const pluginNamespace = /\buseTranslation\(\s*'|\buseAITranslate\(/u;
+const pluginNamespace =
+  /\buseTranslation\(\s*'|\buseAITranslate\(|\buseAuthorizationTranslation\(/u;
 
 interface References {
   readonly file: string;
@@ -84,7 +85,11 @@ function scan(source: string): {
 function referencedKeys(): References[] {
   return sourceFiles(clientDirectory).flatMap((file) => {
     const source = fs.readFileSync(file, 'utf8');
-    if (pluginNamespace.test(source)) return [];
+    if (
+      pluginNamespace.test(source) ||
+      file.includes(`${path.sep}nocohr-management${path.sep}`)
+    )
+      return [];
     const { keys, prefixes } = scan(source);
     return [
       {

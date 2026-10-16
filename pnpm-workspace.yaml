@@ -4,7 +4,7 @@
 allowBuilds:
   better-sqlite3: true
   esbuild: true
-  msgpackr-extract: set this to true or false
+  msgpackr-extract: false
   oracledb: true
   # @larksuiteoapi/node-sdk: its install script only prints a version notice.
   protobufjs: false
@@ -56,3 +56,14 @@ minimumReleaseAgeExclude:
   - '@nocobase/app-server@1.0.0-beta.30'
   - '@nocobase/app-skills@0.1.0-beta.20'
   - '@nocobase/jobs@0.1.0-beta.0'
+
+# These retained plugins still publish the client-2 Settings/Dev protocol. The
+# patches translate it to client-3 app routes; overrides keep one client token identity.
+overrides:
+  '@tiptap/react@3.30.2>@tiptap/extension-bubble-menu': 3.30.2
+  '@tiptap/react@3.30.2>@tiptap/extension-floating-menu': 3.30.2
+  '@nocobase/app-plugin-ai-employee@3.0.0-beta.2>@nocobase/app-client': 3.0.0-beta.1
+  '@nocobase/app-plugin-workflow@2.0.0-beta.1>@nocobase/app-client': 3.0.0-beta.1
+patchedDependencies:
+  '@nocobase/app-plugin-ai-employee@3.0.0-beta.2': patches/@nocobase__app-plugin-ai-employee@3.0.0-beta.2.patch
+  '@nocobase/app-plugin-workflow@2.0.0-beta.1': patches/@nocobase__app-plugin-workflow@2.0.0-beta.1.patch

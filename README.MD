@@ -457,3 +457,17 @@ pnpm nocobase hub deploy --release-id <releaseId> --json
 ## Strict startup verification
 
 Set `NOCOBASE_STRICT_STARTUP=true` when running `pnpm dev` or `pnpm start` in automated verification. Startup failures, including job import failures, exit nonzero after resource cleanup. Strict dev runs the server without watch mode so a failed server cannot remain hidden behind a watcher; restart the command after server or configuration changes. Client HMR remains available. Omit the variable or set it to `false` for normal development with server hot reload. Request errors and individual job execution failures do not terminate the application.
+
+## NocoHR template beta.68 upgrade
+
+This application keeps AI employees, workflows, avatars, and the existing Hub CLI even though the clean Default template no longer includes them. The two version-specific patches in `patches/` translate the retained AI/workflow plugins' Settings/Dev route declarations to client 3. Matching dependency overrides keep all three clients on one service identity. Remove each patch and override together only when its upstream release supports client 3.
+
+Management UI retired by the Users, API Keys, Authorization, rule, Database Explorer, Scheduler and Notification plugins now lives in `client/extensions/nocohr-management/`. These are application-owned pages migrated from the beta.54 release source, not new plugins. They keep their original URLs, namespaces and authorization requirements while the installed plugins continue to own server enforcement and data. The notification bell, phone tab bar, AI assistant, NocoHR branding, custom palette and homepage redirect are retained.
+
+The template's system translations live in `client/locales/system/`; business copy and retained shell translations remain in the application locale files. Both the existing `@/` alias and the template's `#` imports are supported. Existing migrations and seeds are preserved; the new device-code migration supports the browser approval page at `/device`.
+
+`pnpm lint` checks the client and the remaining source in separate processes, each with an 8 GB heap limit. This avoids retaining both TypeScript project graphs in one process; all rules and the zero-warning requirement still apply.
+
+Before starting an existing installation, configure `secrets.keys` (or `SECRETS_KEYS`) as described in `config.example.yml` and run `pnpm nocobase config check`. Do not replace `config.yml`, rotate a working encryption key, or repair migration history to silence an upgrade error. Run `pnpm nocobase secrets status` before production rollout and inspect any legacy unsealed credentials before using the supported rotation command. Production credentials and external mail/Feishu delivery must be verified in their target environment.
+
+The upgrade branch starts from `2bfd8d1fc4d28b23c54c214c3aef1ecfd1729a31`; `main` remains the code rollback point. Back up the database and live configuration before applying migrations to an existing installation. Returning to old source after newer plugin migrations have run also requires restoring that backup.
