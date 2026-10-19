@@ -16,7 +16,7 @@ import migration31 from '../../database/main/migrations/202610270031_create_capa
 import migration33 from '../../database/main/migrations/202610270033_create_assistant_conversations.js';
 import migration34 from '../../database/main/migrations/202610270034_create_assistant_history_configuration.js';
 import { legacyCollections } from '../fixtures/legacy-assistant.js';
-import { defineTools } from '../../server/ai/contracts.js';
+import { defineTools, type RegisteredTool } from '../../server/ai/contracts.js';
 import { ConversationStore } from '../../server/providers/assistant/conversation-store.js';
 import { DatabaseToolCallStore } from '../../server/providers/assistant/tool-call-store.js';
 import {
@@ -262,7 +262,7 @@ async function fixture(
       },
     ],
   ]);
-  const tools = new Map([['action', tool]]);
+  const tools = new Map<string, RegisteredTool>([['action', tool]]);
   const models: AssistantModels = {
     list: () => [
       {
@@ -416,6 +416,7 @@ async function fixture(
     models,
     ai,
     employees,
+    tools,
     file,
     migration,
     snapshot,
@@ -444,6 +445,287 @@ async function fixture(
 }
 
 describe('retained AI history and configuration mapping', () => {
+  it.each<{
+    label: string;
+    settings: unknown;
+    general?: boolean;
+    expected: string[];
+  }>([
+    {
+      label: 'explicit empty selection',
+      settings: { tools: [], skills: [] },
+      expected: [],
+    },
+    {
+      label: 'explicit empty enabledTools overrides a selection',
+      settings: { tools: [{ name: 'action' }], enabledTools: [] },
+      expected: [],
+    },
+    {
+      label: 'nonempty selection',
+      settings: { tools: [{ name: 'action' }] },
+      expected: ['action'],
+    },
+    { label: 'missing configuration', settings: null, expected: [] },
+    { label: 'missing fields', settings: {}, expected: [] },
+    { label: 'missing tools field', settings: { skills: [] }, expected: [] },
+    { label: 'null tools field', settings: { tools: null }, expected: [] },
+    {
+      label: 'enabledTools alone discovers a specified tool',
+      settings: { enabledTools: ['action'] },
+      expected: ['action'],
+    },
+    {
+      label: 'selected registered tool outside code defaults',
+      settings: { tools: [{ name: 'unopened' }] },
+      expected: ['unopened'],
+    },
+    {
+      label: 'GENERAL with empty selection',
+      settings: { tools: [] },
+      general: true,
+      expected: ['general'],
+    },
+    {
+      label: 'GENERAL with missing configuration',
+      settings: null,
+      general: true,
+      expected: ['general'],
+    },
+    {
+      label: 'GENERAL with empty enabledTools',
+      settings: { enabledTools: [] },
+      general: true,
+      expected: [],
+    },
+    {
+      label: 'GENERAL and SPECIFIED selected together',
+      settings: { tools: [{ name: 'action' }] },
+      general: true,
+      expected: ['general', 'action'],
+    },
+    {
+      label: 'enabledTools excludes GENERAL',
+      settings: { tools: [{ name: 'action' }], enabledTools: ['action'] },
+      general: true,
+      expected: ['action'],
+    },
+    {
+      label: 'enabledTools excludes configured SPECIFIED',
+      settings: { tools: [{ name: 'action' }], enabledTools: ['general'] },
+      general: true,
+      expected: ['general'],
+    },
+    {
+      label: 'deduplicated GENERAL and enabledTools',
+      settings: {
+        tools: [{ name: 'general' }],
+        enabledTools: ['general', 'action', 'general'],
+      },
+      general: true,
+      expected: ['general', 'action'],
+    },
+  ])(
+    'preserves old effective tools: $label',
+    async ({ settings: sourceSettings, general, expected }) => {
+      const f = await fixture({ attachments: false });
+      for (const name of ['unopened', ...(general ? ['general'] : [])])
+        f.tools.set(
+          name,
+          defineTools({
+            scope: name === 'general' ? 'GENERAL' : 'SPECIFIED',
+            execution: 'backend',
+            defaultPermission: 'ASK',
+            definition: {
+              name,
+              description: 'Synthetic selection boundary',
+              schema: z.strictObject({ value: z.number() }),
+            },
+            async invoke() {
+              f.state.invokes++;
+              return { value: 42 };
+            },
+          }),
+        );
+      await f.db.repository('aiEmployees').updateOne({
+        filter: { username: 'employee' },
+        values: { skillSettings: sourceSettings },
+      });
+      const before = await f.snapshot();
+      const settings = new AssistantEmployeeSettings(
+        f.db.connection(),
+        f.employees,
+      );
+      // Defaults apply to an unmigrated/new declaration, not an old row with absent selections.
+      expect(
+        (await settings.profile('employee')).tools?.map((tool) => tool.name),
+      ).toEqual(['action']);
+      await f.migration().configuration();
+      expect(
+        (await settings.profile('employee')).tools?.map((tool) => tool.name),
+      ).toEqual(expected);
+      expect(
+        (await settings.employee('employee', owner.id)).tools?.map(
+          (tool) => tool.name,
+        ),
+      ).toEqual(expected);
+      expect(await f.migration().configuration()).toEqual({
+        copied: 0,
+        unchanged: 3,
+      });
+      expect(await f.snapshot()).toBe(before);
+
+      const unopened = expected.includes('action') ? 'unopened' : 'action';
+      f.models.create = () => ({
+        async reply(input) {
+          expect(input.tools.map((tool) => tool.definition.name)).toEqual(
+            expected,
+          );
+          return new AIMessage({
+            content: '',
+            tool_calls: [
+              { id: 'unopened-call', name: unopened, args: { value: 1 } },
+            ],
+          });
+        },
+      });
+      const created = await f.service.create(owner, 'employee', model);
+      const execute = await f.service.prepare(
+        owner,
+        created.id,
+        'send',
+        {
+          sessionId: created.id,
+          aiEmployee: 'employee',
+          model,
+          messages: [
+            {
+              key: 'selection-test',
+              role: 'user',
+              content: { type: 'text', content: 'Synthetic request' },
+            },
+          ],
+        },
+        new AbortController().signal,
+      );
+      await expect(execute(async () => undefined)).rejects.toThrow(
+        'INVALID_MODEL_TOOL_CALL',
+      );
+      expect(f.state.invokes).toBe(0);
+      expect(await f.db.repository('assistantToolCalls').count()).toBe(0);
+    },
+  );
+
+  it.each([
+    {
+      scope: 'GENERAL' as const,
+      selected: true,
+      autoCall: false,
+      expected: true,
+    },
+    {
+      scope: 'SPECIFIED' as const,
+      selected: true,
+      autoCall: false,
+      expected: true,
+    },
+    {
+      scope: 'CUSTOM' as const,
+      selected: true,
+      autoCall: undefined,
+      expected: false,
+    },
+    {
+      scope: 'CUSTOM' as const,
+      selected: true,
+      autoCall: false,
+      expected: false,
+    },
+    {
+      scope: 'CUSTOM' as const,
+      selected: true,
+      autoCall: true,
+      expected: true,
+    },
+    {
+      scope: 'CUSTOM' as const,
+      selected: false,
+      autoCall: undefined,
+      expected: true,
+    },
+  ])(
+    'preserves old auto policy: $scope selected=$selected autoCall=$autoCall',
+    async ({ scope, selected, autoCall, expected }) => {
+      const f = await fixture();
+      f.tools.set(
+        'policy-tool',
+        defineTools({
+          scope,
+          execution: 'backend',
+          defaultPermission: 'ALLOW',
+          definition: {
+            name: 'policy-tool',
+            description: 'Synthetic policy',
+            schema: z.strictObject({ value: z.number() }),
+          },
+          async invoke() {
+            return { value: 42 };
+          },
+        }),
+      );
+      await f.db.repository('aiEmployees').updateOne({
+        filter: { username: 'employee' },
+        values: {
+          skillSettings: {
+            tools: selected ? [{ name: 'policy-tool', autoCall }] : [],
+            enabledTools: ['policy-tool'],
+          },
+        },
+      });
+      await f.migration().configuration();
+      const settings = new AssistantEmployeeSettings(
+        f.db.connection(),
+        f.employees,
+      );
+      expect((await settings.profile('employee')).tools).toEqual([
+        { name: 'policy-tool', autoCall: expected },
+      ]);
+    },
+  );
+
+  it('leaves an already copied incorrect selection unchanged rather than overwriting later edits', async () => {
+    const f = await fixture();
+    await f.db.repository('aiEmployees').updateOne({
+      filter: { username: 'employee' },
+      values: { skillSettings: { tools: [], skills: [] } },
+    });
+    await f.migration().configuration();
+    const row = await f.db
+      .repository('assistantEmployees')
+      .findOne({ filter: { id: 'employee' } });
+    // Represents a profile copied by the previous mapper, or a later administrator edit.
+    const priorProfile = {
+      ...(row!.profile as Record<string, unknown>),
+      tools: [{ name: 'action', autoCall: false }],
+    };
+    await f.db.repository('assistantEmployees').updateOne({
+      filter: { id: 'employee' },
+      values: { profile: priorProfile },
+    });
+    const before = await f.snapshot();
+    expect(await f.migration().configuration()).toEqual({
+      copied: 0,
+      unchanged: 3,
+    });
+    expect(
+      (await f.db
+        .repository('assistantEmployees')
+        .findOne({ filter: { id: 'employee' } }))!.profile,
+    ).toEqual(priorProfile);
+    expect(await f.db.repository('capabilityMigrationLedger').count()).toBe(3);
+    expect(await f.snapshot()).toBe(before);
+  });
+
   it('copies non-secret configuration and preserves employee choice, personal prompt and administrator-curated models', async () => {
     const f = await fixture();
     const before = await f.snapshot();

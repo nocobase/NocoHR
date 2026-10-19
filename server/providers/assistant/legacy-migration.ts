@@ -141,26 +141,35 @@ export class LegacyAssistantMigration {
         .object({ name: z.string(), autoCall: z.boolean().optional() })
         .parse(value),
     );
-    const names =
+    const enabled =
       skills.enabledTools == null
-        ? selections.length
-          ? selections.map((value) => value.name)
-          : (base.tools?.map((tool) => tool.name) ?? [])
-        : z.array(z.string()).parse(skills.enabledTools);
-    const tools = names.map((name) => {
-      if (
-        !base.tools?.some((tool) => tool.name === name) ||
-        !this.tools.has(name) ||
-        this.tools.get(name)?.execution === 'frontend'
-      )
-        throw new Error('TOOL_NOT_MAPPED');
-      return {
-        name,
-        autoCall:
-          selections.find((value) => value.name === name)?.autoCall ??
-          base.tools.find((tool) => tool.name === name)?.autoCall,
-      };
-    });
+        ? undefined
+        : new Set(z.array(z.string()).parse(skills.enabledTools));
+    // .30 discovers GENERAL tools plus explicit selections, then applies enabledTools.
+    // An existing row with missing/empty selections never inherits code defaults.
+    const names = new Set([
+      ...[...this.tools]
+        .filter(([, tool]) => tool.scope === 'GENERAL')
+        .map(([name]) => name),
+      ...selections.map((value) => value.name),
+      ...(enabled ?? []),
+    ]);
+    const tools = [...names]
+      .filter((name) => !enabled || enabled.has(name))
+      .map((name) => {
+        const tool = this.tools.get(name);
+        if (!tool || tool.execution === 'frontend')
+          throw new Error('TOOL_NOT_MAPPED');
+        const preset = selections.find((value) => value.name === name);
+        return {
+          name,
+          // Legacy presets override automatic policy only for CUSTOM tools.
+          autoCall:
+            tool.scope === 'CUSTOM' && preset
+              ? preset.autoCall === true
+              : tool.defaultPermission === 'ALLOW',
+        };
+      });
     const chatSettings =
       row.chatSettings == null
         ? (base.chatSettings ?? {})
