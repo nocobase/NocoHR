@@ -1,12 +1,17 @@
 import type { Chat } from '@ai-sdk/react';
 import {
   useCallback,
+  useRef,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
 } from 'react';
 import type { AIChatAction, AIChatState } from './chat-reducer.js';
-import { findChatMessage, isAIToolPart } from './chat-message-utils.js';
+import {
+  findChatMessage,
+  isAIToolPart,
+  getDecidedToolMessage,
+} from './chat-message-utils.js';
 import { getAIWorkContextToolScope } from './page-context-utils.js';
 import type { NocoBaseChatTransport } from './chat-transport.js';
 import type { useAI } from './ai-context.js';
@@ -411,6 +416,55 @@ export function useChatMessageActions({
     ],
   );
 
+  const continuingRef = useRef(new Set<string>());
+  const continueReply = useCallback(async () => {
+    const conversationId = stateRef.current.activeConversationId;
+    if (isChatRunning(activeChat) || continuingRef.current.has(conversationId))
+      return;
+    const message = getDecidedToolMessage(activeChat.messages);
+    if (!message) return;
+    const transport = transportsRef.current.get(conversationId);
+    if (!transport) return;
+    continuingRef.current.add(conversationId);
+    setHistoryError(undefined);
+    const responseMessageId = `assistant-${crypto.randomUUID()}`;
+    activeChat.messages = [
+      ...activeChat.messages,
+      {
+        id: responseMessageId,
+        role: 'assistant',
+        metadata: {
+          createdAt: new Date().toISOString(),
+          employeeUsername: getRuntimeContext(conversationId).employeeUsername,
+        },
+        parts: [],
+      },
+    ];
+    transport.prepareToolResume(
+      message.metadata!.serverMessageId!,
+      responseMessageId,
+      message.parts.filter(isAIToolPart).map((part) => part.toolCallId),
+      [],
+    );
+    try {
+      await activeChat.resumeStream();
+      if (activeChat.status === 'error')
+        throw activeChat.error ?? new Error('Unable to continue the reply');
+    } catch (error) {
+      transport.cancelToolResume(message.metadata!.serverMessageId!);
+      activeChat.messages = activeChat.messages.filter(
+        (item) => item.id !== responseMessageId,
+      );
+      setHistoryError(
+        error instanceof Error
+          ? error
+          : new Error('Unable to continue the reply'),
+      );
+    } finally {
+      continuingRef.current.delete(conversationId);
+    }
+  }, [activeChat, getRuntimeContext, setHistoryError, stateRef, transportsRef]);
+
   const decideToolCall = useCallback(
     (decision: AIToolCallDecision) =>
       decideConversationToolCall(
@@ -544,6 +598,7 @@ export function useChatMessageActions({
 
   return {
     retryMessage,
+    continueReply,
     decideToolCall,
     startEditingMessage,
     cancelEditingMessage,

@@ -9,6 +9,7 @@ import {
   type PropsWithChildren,
 } from 'react';
 import { aiChatReducer, createAIChatState } from './chat-reducer.js';
+import { getDecidedToolMessage } from './chat-message-utils.js';
 import {
   AIChatContext,
   AIChatMessagesContext,
@@ -331,6 +332,7 @@ export function AIChatProvider({
     invalidate: invalidateConversationHistory,
     load: loadConversationMessages,
     loadingId: messageLoadingId,
+    pendingConversationId,
     refresh: refreshConversationMessages,
   } = useConversationHistory({
     chatSurfaceOpen,
@@ -346,6 +348,9 @@ export function AIChatProvider({
 
   const activeChat = getChat(state.activeConversationId);
   const chat = useChatState(activeChat);
+  const canContinueReply =
+    pendingConversationId === state.activeConversationId &&
+    Boolean(getDecidedToolMessage(chat.messages));
   const draft = state.drafts[state.activeConversationId] ?? '';
   const activeConversation = state.conversations.find(
     (conversation) => conversation.id === state.activeConversationId,
@@ -518,6 +523,7 @@ export function AIChatProvider({
 
   const {
     retryMessage,
+    continueReply,
     decideToolCall,
     startEditingMessage,
     cancelEditingMessage,
@@ -872,6 +878,7 @@ export function AIChatProvider({
       stop: () => activeChat.stop(),
       regenerate: () => activeChat.regenerate(),
       retryMessage,
+      continueReply: canContinueReply ? continueReply : undefined,
       decideToolCall,
       startNewConversation,
       selectConversation: (conversationId) => {
@@ -901,8 +908,10 @@ export function AIChatProvider({
             dispatch({ type: 'select-model', model: getAIModelKey(model) });
           }
         }
+        if (stateRef.current.activeConversationId === conversationId) {
+          void loadConversationMessages(conversationId);
+        }
         dispatch({ type: 'set-active-conversation', conversationId });
-        void loadConversationMessages(conversationId);
         requestComposerFocus();
       },
       renameConversation,
@@ -976,6 +985,8 @@ export function AIChatProvider({
       setConversationWorkContext,
       runTask,
       retryMessage,
+      continueReply,
+      canContinueReply,
       decideToolCall,
       send,
       setDraft,

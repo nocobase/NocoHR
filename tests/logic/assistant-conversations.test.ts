@@ -669,17 +669,36 @@ describe('application conversation persistence and request lifecycle', () => {
       toolCallId: part.toolCallId,
       userDecision: { type: 'approve' },
     });
-    const resumed = await service.resumeToolCallStream({
-      sessionId: id,
-      messageId: message.id,
-      model: modelSettings,
-      toolCallResults: [],
-    });
     expect(
-      (await Array.fromAsync(createNocoBaseUIMessageStream(resumed))).some(
+      operations.filter((operation) => operation === 'GET assistantRuntime'),
+    ).toHaveLength(1);
+    // The decision response was lost; a reopened page reads saved state and results.
+    await f.restart();
+    const reopened = new RuntimeAIService(client);
+    expect(await reopened.getConversationActiveState(id)).toBe('pending');
+    const { getDecidedToolMessage } =
+      await import('../../client/extensions/nocobase-ai/providers/chat-message-utils.js');
+    const saved = getDecidedToolMessage(
+      await reopened.getConversationMessages(id),
+    )!;
+    expect(saved.metadata!.serverMessageId).toBe(message.id);
+    const reopenedTransport = new NocoBaseChatTransport({
+      service: reopened,
+      getContext: () => ({ sessionId: id, employee, model: selected }),
+    });
+    reopenedTransport.prepareToolResume(
+      saved.metadata!.serverMessageId!,
+      'continued-message',
+      [part.toolCallId],
+      [],
+    );
+    const resumed = await reopenedTransport.reconnectToStream();
+    expect(
+      (await Array.fromAsync(resumed)).some(
         (chunk) => chunk.type === 'tool-output-available',
       ),
     ).toBe(true);
+    expect(await reopened.getConversationActiveState(id)).toBe('idle');
     expect(f.state.invokes).toBe(1);
     expect(
       (await service.listConversations()).some((row) => row.id === 'legacy-1'),
@@ -700,7 +719,7 @@ describe('application conversation persistence and request lifecycle', () => {
     ).toEqual(['GET aiEmployee/conversations/legacy-1/messages']);
     expect(
       operations.filter((operation) => operation === 'GET assistantRuntime'),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
   it('routes background reply and structured retry through persisted sessions without invoking the old runtime', async () => {
     const f = await fixture({ plain: true });
@@ -876,11 +895,109 @@ describe('application conversation persistence and request lifecycle', () => {
       const body = await f.resumeBody();
       await measure('resume', () => f.run('resume', body));
       await measure('history', () => f.service.history(actor, f.row.id));
+      await measure('state-read', () => f.service.get(actor, f.row.id));
       expect(f.state.invokes).toBe(1);
     } finally {
       client.removeListener('query', listener);
     }
   });
+
+  for (const scenario of [
+    'approve',
+    'reject',
+    'mixed',
+    'business-error',
+  ] as const) {
+    it(`continues a persisted ${scenario} group after reopen or a lost decision response without replay`, async () => {
+      const { toAIChatHistoryMessages } =
+        await import('../../client/extensions/nocobase-ai/services/nocobase-ai-service.js');
+      const { getDecidedToolMessage } =
+        await import('../../client/extensions/nocobase-ai/providers/chat-message-utils.js');
+      const f = await fixture({
+        manual: true,
+        businessError: scenario === 'business-error',
+      });
+      if (scenario === 'mixed')
+        f.setReply(async (input) => {
+          if (ToolMessage.isInstance(input.messages.at(-1)))
+            return new AIMessage('Done');
+          return new AIMessage({
+            content: '',
+            tool_calls: [
+              { id: 'approve-call', name: 'action', args: {} },
+              { id: 'reject-call', name: 'action', args: {} },
+            ],
+          });
+        });
+      await f.run();
+      expect(
+        getDecidedToolMessage(
+          toAIChatHistoryMessages(await f.service.history(actor, f.row.id)),
+        ),
+      ).toBeUndefined();
+      const calls = await f.calls();
+      for (const [index, call] of calls.entries()) {
+        await f.service.decide(
+          actor,
+          f.row.id,
+          call.messageId!,
+          call.modelCallId!,
+          {
+            type:
+              scenario === 'reject' || (scenario === 'mixed' && index === 1)
+                ? 'reject'
+                : 'approve',
+          },
+        ); // Deliberately discard the response: the browser closed before resume.
+        if (index < calls.length - 1)
+          expect(
+            getDecidedToolMessage(
+              toAIChatHistoryMessages(await f.service.history(actor, f.row.id)),
+            ),
+          ).toBeUndefined();
+      }
+      await f.restart();
+      const history = toAIChatHistoryMessages(
+        await f.service.history(actor, f.row.id),
+      );
+      const message = getDecidedToolMessage(history)!;
+      expect(message.metadata!.serverMessageId).toBe(calls[0]!.messageId);
+      const parts = message.parts.filter((p) => p.type === 'dynamic-tool');
+      expect(parts).toHaveLength(calls.length);
+      expect(
+        parts.every(
+          (p) => p.callProviderMetadata?.nocobase?.requiresApproval === false,
+        ),
+      ).toBe(true);
+      if (scenario === 'business-error') {
+        expect(parts[0]!.state).toBe('output-error');
+        expect(JSON.stringify(parts)).toContain('BUSINESS_REFUSED');
+        expect(JSON.stringify(parts)).not.toContain('never show this');
+      }
+      expect((await f.service.get(actor, f.row.id)).state).toBe('pending');
+      await expect(f.run()).rejects.toThrow('CHAT_CONFIRMATION_REQUIRED');
+      const body = {
+        ...(await f.resumeBody()),
+        messageId: message.metadata!.serverMessageId,
+      };
+      const results = await Promise.allSettled([
+        f.run('resume', body),
+        f.run('resume', body),
+      ]);
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+      expect(f.state.invokes).toBe(scenario === 'reject' ? 0 : 1);
+      await f.restart();
+      expect((await f.service.get(actor, f.row.id)).state).toBe('idle');
+      expect(
+        getDecidedToolMessage(
+          toAIChatHistoryMessages(await f.service.history(actor, f.row.id)),
+        ),
+      ).toBeUndefined();
+      await expect(f.run('resume', body)).rejects.toThrow();
+      expect(f.state.invokes).toBe(scenario === 'reject' ? 0 : 1);
+    });
+  }
 
   it('keeps a completed business result if cancellation arrives while the business action runs', async () => {
     const f = await fixture();

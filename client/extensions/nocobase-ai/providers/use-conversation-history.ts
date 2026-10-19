@@ -33,15 +33,12 @@ export function useConversationHistory({
   onMarkRead: (conversationId: string) => void;
   onError: (error?: Error) => void;
 }) {
-  const surfaceOpenRef = useRef(chatSurfaceOpen);
   const openVersionRef = useRef(0);
   const pendingRequestsRef = useRef(
     new Map<string, Promise<AIChatMessage[]>>(),
   );
   const [loadingId, setLoadingId] = useState<string>();
-  useEffect(() => {
-    surfaceOpenRef.current = chatSurfaceOpen;
-  }, [chatSurfaceOpen]);
+  const [pendingConversationId, setPendingConversationId] = useState<string>();
 
   const refresh = useCallback(
     (
@@ -78,6 +75,7 @@ export function useConversationHistory({
       const openVersion = openVersionRef.current + 1;
       openVersionRef.current = openVersion;
       setLoadingId(conversationId);
+      setPendingConversationId(undefined);
       onError(undefined);
       try {
         await refresh(conversationId, targetChat, { updateRead: true });
@@ -108,11 +106,14 @@ export function useConversationHistory({
         if (
           openVersionRef.current !== openVersion ||
           getActiveConversationId() !== conversationId ||
-          isChatRunning(targetChat) ||
-          activeState !== 'streaming'
+          isChatRunning(targetChat)
         ) {
           return;
         }
+        setPendingConversationId(
+          activeState === 'pending' ? conversationId : undefined,
+        );
+        if (activeState !== 'streaming') return;
         getTransport(conversationId)?.prepareConversationResume(
           targetChat.messages,
         );
@@ -140,38 +141,15 @@ export function useConversationHistory({
     if (!chatSurfaceOpen || activeConversationId === AI_DRAFT_CONVERSATION_ID) {
       return;
     }
-    const targetChat = getChat(activeConversationId);
-    if (isChatRunning(targetChat)) return;
-
-    void refresh(activeConversationId, targetChat, { updateRead: true })
-      .then(() => {
-        if (
-          surfaceOpenRef.current &&
-          getActiveConversationId() === activeConversationId
-        ) {
-          onMarkRead(activeConversationId);
-        }
-      })
-      .catch((error: unknown) => {
-        onError(
-          error instanceof Error
-            ? error
-            : new Error('Unable to mark the conversation as read'),
-        );
-      });
-  }, [
-    activeConversationId,
-    chatSurfaceOpen,
-    getActiveConversationId,
-    getChat,
-    onError,
-    onMarkRead,
-    refresh,
-  ]);
+    void load(activeConversationId);
+    return () => {
+      openVersionRef.current += 1;
+    };
+  }, [activeConversationId, chatSurfaceOpen, load]);
 
   const invalidate = useCallback(() => {
     openVersionRef.current += 1;
   }, []);
 
-  return { invalidate, load, loadingId, refresh };
+  return { invalidate, load, loadingId, refresh, pendingConversationId };
 }

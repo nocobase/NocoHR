@@ -422,7 +422,9 @@ export class NocoBaseAIService implements AIService {
   async getConversationActiveState(sessionId: string) {
     const conversation = await this.aiRequest<{
       llmActiveState?: unknown;
+      state?: unknown;
     }>(aiPath('aiEmployee', 'conversations', sessionId));
+    if (conversation?.state === 'pending') return 'pending' as const;
     const state = conversation?.llmActiveState;
     return state === 'idle' || state === 'streaming' || state === 'invoking'
       ? state
