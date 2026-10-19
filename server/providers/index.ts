@@ -1,6 +1,7 @@
 import type { ApplicationServiceProviderConstructor } from '@nocobase/app-server/application';
 
 import AIResourcesProvider from './ai-resources.js';
+import AssistantProvider from './assistant/provider.js';
 import HrProvider from './hr/index.js';
 // 上线准备: the go-live checklist and bulk account activation, after the talent platform it reads.
 import GoLiveProvider from './hr/go-live/provider.js';
@@ -9,6 +10,7 @@ const serviceProviders: readonly ApplicationServiceProviderConstructor[] = [
   HrProvider,
   GoLiveProvider,
   AIResourcesProvider,
+  AssistantProvider,
 ];
 
 export default serviceProviders;

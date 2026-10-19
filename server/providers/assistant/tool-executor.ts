@@ -14,6 +14,7 @@ export interface StoredToolCall {
   tool: string;
   messageId?: string;
   modelCallId?: string;
+  auto?: boolean;
   arguments: unknown;
   argumentDigest: string;
   status: ToolCallStatus;

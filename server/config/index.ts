@@ -20,6 +20,7 @@ import api from './api.js';
 import database from './database.js';
 import snowflake from './snowflake.js';
 import ai from './ai.js';
+import assistant from './assistant.js';
 import workflow from './workflow.js';
 import talent from './talent.js';
 // V3-11
@@ -54,6 +55,7 @@ const defaultConfigs: AppConfigFactory<{
   database: ReturnType<typeof database>;
   snowflake: ReturnType<typeof snowflake>;
   ai: ReturnType<typeof ai>;
+  assistant: ReturnType<typeof assistant>;
   workflow: ReturnType<typeof workflow>;
   talent: ReturnType<typeof talent>;
   talentProfile: ReturnType<typeof talentProfile>;
@@ -81,6 +83,7 @@ const defaultConfigs: AppConfigFactory<{
   database,
   snowflake,
   ai,
+  assistant,
   workflow,
   talent,
   talentProfile,

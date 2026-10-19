@@ -197,3 +197,13 @@ logging:
     enabled: true
     # Set true for human-readable terminal output.
     pretty: false
+
+# Application-owned text chat and backend confirmation runtime. Enable only in an isolated
+# validation environment until the capability and migration preflight passes.
+# Existing AI/Workflow plugin configuration is retained separately.
+assistant:
+  enabled: false
+  llmService: application
+  model: ''
+  apiKey: '' # Supply APP_ASSISTANT_API_KEY through the deployment secret store.
+  baseURL: '' # Optional OpenAI-compatible API base URL; never returned to clients.

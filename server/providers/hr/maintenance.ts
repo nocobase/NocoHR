@@ -317,6 +317,22 @@ async function aiBrief(
   timeZone: string,
 ): Promise<string | undefined> {
   try {
+    const { assistantConversationsToken } =
+      await import('../assistant/tokens.js');
+    if (container.has(assistantConversationsToken)) {
+      const { createAIRunner } = await import('./ai-runner.js');
+      const { z } = await import('zod');
+      const { data } = await createAIRunner(container).structured({
+        employee: 'certificationSteward',
+        userId,
+        title: '每周持证简报',
+        timeZone,
+        prompt: `请根据以下本周持证数据，为我写一份不超过 200 字的持证简报，只使用给出的数据，按到期日排序列名单，不要估算：\n${JSON.stringify(facts)}`,
+        schema: z.object({ brief: z.string() }),
+        timeoutMs: 60_000,
+      });
+      return data.brief.trim().slice(0, 200) || undefined;
+    }
     const { aiConversationsManagerToken, agentServiceFactoryToken } =
       await import('@nocobase/app-plugin-ai-employee/server');
     if (

@@ -24,13 +24,13 @@ const model = z.strictObject({
   llmService: z.string().optional(),
   model: z.string(),
 });
-const sendRequest = z.strictObject({
+export const sendRequest = z.strictObject({
   sessionId: z.string(),
   aiEmployee: z.string(),
   model,
   messages: z.tuple([
     z.strictObject({
-      key: z.string(),
+      key: z.string().min(1).max(200),
       role: z.literal('user'),
       content: z.strictObject({
         type: z.literal('text'),
@@ -39,14 +39,14 @@ const sendRequest = z.strictObject({
     }),
   ]),
 });
-const decisionRequest = z.union([
+export const decisionRequest = z.union([
   z.strictObject({ type: z.literal('approve') }),
   z.strictObject({
     type: z.literal('reject'),
     message: z.string().optional(),
   }),
 ]);
-const resumeRequest = z.strictObject({
+export const resumeRequest = z.strictObject({
   sessionId: z.string(),
   messageId: z.string(),
   model,
@@ -104,12 +104,62 @@ export class AssistantChatAdapter {
     private readonly tools: ReadonlyMap<string, RegisteredTool>,
   ) {}
 
+  public async validateSend(
+    actor: ToolActor,
+    session: AssistantChatSession,
+    body: unknown,
+  ) {
+    const request = parse(sendRequest, body);
+    this.checkSession(actor, session, request);
+    this.checkTools(session);
+    await this.authorization.authorizeConversation(
+      actor,
+      session.employee.username,
+      session.id,
+    );
+    if (request.aiEmployee !== session.employee.username)
+      throw new Error('CHAT_EMPLOYEE_CHANGED');
+    if (session.pendingCallIds.length)
+      throw new Error('CHAT_CONFIRMATION_REQUIRED');
+    return request;
+  }
+
+  public async validateResume(
+    actor: ToolActor,
+    session: AssistantChatSession,
+    body: unknown,
+  ) {
+    const request = parse(resumeRequest, body);
+    this.checkSession(actor, session, request);
+    this.checkTools(session);
+    await this.authorization.authorizeConversation(
+      actor,
+      session.employee.username,
+      session.id,
+    );
+    const calls = await this.readCalls(actor, session, request.messageId);
+    for (const call of calls) {
+      await this.authorization.authorize(
+        actor,
+        call.employee,
+        session.id,
+        call.tool,
+      );
+      if (call.status !== 'completed' && call.status !== 'rejected')
+        throw new Error('CHAT_CONFIRMATION_REQUIRED');
+      if (call.status === 'completed' && !Object.hasOwn(call, 'result'))
+        throw new Error('TOOL_RESULT_REQUIRED');
+    }
+    return request;
+  }
+
   public async send(
     actor: ToolActor,
     session: AssistantChatSession,
     body: unknown,
     signal: AbortSignal,
     emit: Emit,
+    onMessage?: (message: BaseMessage) => Promise<void>,
   ) {
     const request = parse(sendRequest, body);
     this.checkSession(actor, session, request);
@@ -131,9 +181,12 @@ export class AssistantChatAdapter {
       sessionId: session.id,
       history: session.history,
       text: request.messages[0].content.content,
+      requestKey: request.messages[0].key,
+      onMessage,
       signal,
       onText: async (body) => emit({ type: 'content', body }),
-      onToolEvent: async (event) => this.emitToolEvent(event, emit),
+      onToolEvent: async (event) =>
+        AssistantChatAdapter.emitToolEvent(event, emit),
     });
     return result;
   }
@@ -184,6 +237,7 @@ export class AssistantChatAdapter {
     body: unknown,
     signal: AbortSignal,
     emit: Emit,
+    onMessage?: (message: BaseMessage) => Promise<void>,
   ) {
     const request = parse(resumeRequest, body);
     this.checkSession(actor, session, request);
@@ -221,7 +275,7 @@ export class AssistantChatAdapter {
     // Backend results supplied by a browser are rejected by the schema, never passed to a model.
     await emit({ type: 'new_message' });
     for (const call of calls)
-      await this.emitToolEvent(
+      await AssistantChatAdapter.emitToolEvent(
         {
           call,
           auto: false,
@@ -233,14 +287,20 @@ export class AssistantChatAdapter {
         },
         emit,
       );
+    for (const message of results) {
+      message.id = crypto.randomUUID();
+      await onMessage?.(message);
+    }
     const result = await this.turn.continue({
+      onMessage,
       actor,
       employee: session.employee,
       sessionId: session.id,
       history: [...session.history, ...results],
       signal,
       onText: async (body) => emit({ type: 'content', body }),
-      onToolEvent: async (event) => this.emitToolEvent(event, emit),
+      onToolEvent: async (event) =>
+        AssistantChatAdapter.emitToolEvent(event, emit),
     });
     return result;
   }
@@ -332,7 +392,7 @@ export class AssistantChatAdapter {
     };
   }
 
-  private async emitToolEvent(event: AssistantToolEvent, emit: Emit) {
+  public static async emitToolEvent(event: AssistantToolEvent, emit: Emit) {
     const { call, status } = event;
     const failure =
       status === 'completed'

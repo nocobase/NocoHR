@@ -1,3 +1,4 @@
+import { assistantRoutes } from './assistant.js';
 import type { Application } from '@nocobase/app-server/application';
 import type { AppRouteContribution } from '@nocobase/app-server/router';
 
@@ -93,6 +94,7 @@ const routes: readonly AppRouteContribution<Application>[] = [
   // V3-10
   ...certificateScanRoutes,
   // Last: an unknown /api/talent, /api/public or /api/demo path is a JSON 404, not the client's index.html.
+  assistantRoutes,
   apiNotFoundRoutes,
 ];
 

@@ -25,6 +25,11 @@ const storedCall = z.object({
     .nullable()
     .optional()
     .transform((value) => value ?? undefined),
+  auto: z
+    .boolean()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? false),
   arguments: z.unknown(),
   argumentDigest: z.string().length(64),
   result: z.unknown().optional(),
@@ -53,6 +58,7 @@ export class DatabaseToolCallStore implements ToolCallStore {
       values: {
         ...call,
         arguments: capabilityJsonValue(call.arguments),
+        result: capabilityJsonValue(call.result),
         createdAt: stamp,
         updatedAt: stamp,
       },
@@ -71,6 +77,16 @@ export class DatabaseToolCallStore implements ToolCallStore {
     if (call.status === 'completed' && !Object.hasOwn(parsed.data, 'result'))
       throw new Error('INVALID_STORED_TOOL_CALL');
     return call.status === 'completed' ? { ...call, result } : call;
+  }
+
+  public async list(sessionId: string): Promise<StoredToolCall[]> {
+    const rows = await this.connection
+      .repository('assistantToolCalls')
+      .findMany({ filter: { sessionId } });
+    return rows.map((row) => {
+      const { result, ...call } = storedCall.parse(row);
+      return call.status === 'completed' ? { ...call, result } : call;
+    });
   }
 
   public async claim(

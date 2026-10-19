@@ -51,6 +51,7 @@ export interface AssistantTurnContext {
   history: readonly BaseMessage[];
   signal: AbortSignal;
   onText?: (text: string) => Promise<void>;
+  onMessage?: (message: BaseMessage) => Promise<void>;
   onToolEvent?: (event: AssistantToolEvent) => Promise<void>;
 }
 
@@ -82,8 +83,18 @@ export class AssistantTurn {
     private readonly policy: AssistantToolPolicy,
   ) {}
 
-  public run(input: AssistantTurnContext & { text: string }) {
-    return this.invoke(input, [...input.history, new HumanMessage(input.text)]);
+  public async run(
+    input: AssistantTurnContext & { text: string; requestKey?: string },
+  ) {
+    const message = new HumanMessage({
+      id: randomUUID(),
+      content: input.text,
+      additional_kwargs: input.requestKey
+        ? { requestKey: input.requestKey }
+        : {},
+    });
+    await input.onMessage?.(message);
+    return this.invoke(input, [...input.history, message]);
   }
 
   /** Continue a confirmed turn with server-owned ToolMessages, without inventing another user message. */
@@ -108,13 +119,33 @@ export class AssistantTurn {
     const graph = new StateGraph(turnState)
       .addNode('model', async (state) => {
         input.signal.throwIfAborted();
-        const message = await this.model.reply({
-          messages: state.messages,
-          tools: [...available.values()],
-          signal: input.signal,
-          onText: input.onText ?? (async () => undefined),
-        });
+        let partial = '';
+        let message: AIMessage;
+        try {
+          message = await this.model.reply({
+            messages: state.messages,
+            tools: [...available.values()],
+            signal: input.signal,
+            onText: async (text) => {
+              partial += text;
+              await input.onText?.(text);
+            },
+          });
+          input.signal.throwIfAborted();
+        } catch (error) {
+          if (partial)
+            await input.onMessage?.(
+              new AIMessage({
+                id: randomUUID(),
+                content: partial,
+                additional_kwargs: { incomplete: true },
+              }),
+            );
+          throw error;
+        }
         message.id = randomUUID();
+        // Commit the model's call identities before any business tool can run.
+        await input.onMessage?.(message);
         return { messages: [message] };
       })
       .addNode('tools', async (state) => {
@@ -126,6 +157,11 @@ export class AssistantTurn {
           throw new Error('INVALID_MODEL_TOOL_MESSAGE');
         const replies: BaseMessage[] = [];
         const pending: StoredToolCall[] = [];
+        const addReply = async (message: BaseMessage) => {
+          message.id = randomUUID();
+          await input.onMessage?.(message);
+          replies.push(message);
+        };
         const ids = new Set<string>();
         for (const request of message.tool_calls ?? []) {
           input.signal.throwIfAborted();
@@ -165,12 +201,13 @@ export class AssistantTurn {
             arguments: capabilityJsonValue(request.args),
             argumentDigest: toolArgumentDigest(request.args),
             status: 'pending',
+            auto,
           };
           const notify = (status: ToolCallStatus, result?: unknown) =>
             input.onToolEvent?.({ call, auto, status, result });
           if (decision === 'deny') {
             await notify('rejected', { code: 'TOOL_FORBIDDEN' });
-            replies.push(
+            await addReply(
               new ToolMessage({
                 tool_call_id: request.id,
                 content: JSON.stringify({ code: 'TOOL_FORBIDDEN' }),
@@ -195,7 +232,7 @@ export class AssistantTurn {
             throw error;
           }
           await notify('completed', result);
-          replies.push(
+          await addReply(
             new ToolMessage({
               tool_call_id: request.id,
               content: JSON.stringify(capabilityJsonValue(result)),
