@@ -122,6 +122,7 @@ test('persists tool state across store instances and atomically claims one execu
   expect(claims.filter(Boolean)).toHaveLength(1);
   await reopened.complete('call', { id: 'draft' });
   expect((await original.find('call'))?.status).toBe('completed');
+  expect((await original.find('call'))?.result).toEqual({ id: 'draft' });
   await expect(original.complete('call', {})).rejects.toThrow(
     'TOOL_CALL_STATE_CONFLICT',
   );

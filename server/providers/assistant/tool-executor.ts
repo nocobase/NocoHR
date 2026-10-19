@@ -17,6 +17,7 @@ export interface StoredToolCall {
   arguments: unknown;
   argumentDigest: string;
   status: ToolCallStatus;
+  result?: unknown;
 }
 
 /** A durable store must implement claim as an atomic compare-and-set. */

@@ -27,6 +27,7 @@ const storedCall = z.object({
     .transform((value) => value ?? undefined),
   arguments: z.unknown(),
   argumentDigest: z.string().length(64),
+  result: z.unknown().optional(),
   status: z.enum([
     'pending',
     'executing',
@@ -65,7 +66,11 @@ export class DatabaseToolCallStore implements ToolCallStore {
     if (!row) return undefined;
     const parsed = storedCall.safeParse(row);
     if (!parsed.success) throw new Error('INVALID_STORED_TOOL_CALL');
-    return parsed.data;
+    // A pending database row has a nullable result; keep the pre-execution contract unchanged.
+    const { result, ...call } = parsed.data;
+    if (call.status === 'completed' && !Object.hasOwn(parsed.data, 'result'))
+      throw new Error('INVALID_STORED_TOOL_CALL');
+    return call.status === 'completed' ? { ...call, result } : call;
   }
 
   public async claim(

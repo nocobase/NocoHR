@@ -43,6 +43,15 @@ export interface AssistantToolPolicy extends ToolAuthorization {
   ): Promise<'deny' | 'ask' | 'allow'>;
 }
 
+export interface AssistantTurnContext {
+  actor: ToolActor;
+  employee: AIEmployeeOptions;
+  sessionId: string;
+  history: readonly BaseMessage[];
+  signal: AbortSignal;
+  onText?: (text: string) => Promise<void>;
+}
+
 const turnState = Annotation.Root({
   messages: Annotation<BaseMessage[]>({
     reducer: (left, right) => [...left, ...right],
@@ -64,15 +73,21 @@ export class AssistantTurn {
     private readonly policy: AssistantToolPolicy,
   ) {}
 
-  public async run(input: {
-    actor: ToolActor;
-    employee: AIEmployeeOptions;
-    sessionId: string;
-    history: readonly BaseMessage[];
-    text: string;
-    signal: AbortSignal;
-    onText?: (text: string) => Promise<void>;
-  }): Promise<{ messages: BaseMessage[]; pending: StoredToolCall[] }> {
+  public run(input: AssistantTurnContext & { text: string }) {
+    return this.invoke(input, [...input.history, new HumanMessage(input.text)]);
+  }
+
+  /** Continue a confirmed turn with server-owned ToolMessages, without inventing another user message. */
+  public continue(input: AssistantTurnContext) {
+    if (!ToolMessage.isInstance(input.history.at(-1)))
+      throw new Error('TOOL_RESULT_REQUIRED');
+    return this.invoke(input, [...input.history]);
+  }
+
+  private async invoke(
+    input: AssistantTurnContext,
+    messages: BaseMessage[],
+  ): Promise<{ messages: BaseMessage[]; pending: StoredToolCall[] }> {
     const available = new Map<string, RegisteredTool>();
     if (input.employee.chatSettings?.enableTools !== false) {
       for (const reference of input.employee.tools ?? []) {
@@ -197,11 +212,11 @@ export class AssistantTurn {
     const result = await graph.invoke(
       {
         messages: [
-          ...(input.employee.systemPrompt
+          ...(input.employee.systemPrompt &&
+          !SystemMessage.isInstance(messages[0])
             ? [new SystemMessage(input.employee.systemPrompt)]
             : []),
-          ...input.history,
-          new HumanMessage(input.text),
+          ...messages,
         ],
       },
       { signal: input.signal, recursionLimit: 32 },
