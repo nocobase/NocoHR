@@ -11,7 +11,7 @@ import type {
   ToolActor,
 } from '../../ai/contracts.js';
 import { capabilityJsonValue } from '../upgrade/json-value.js';
-import { AssistantTurn } from './model-turn.js';
+import { AssistantTurn, type AssistantToolEvent } from './model-turn.js';
 import {
   ToolExecutor,
   toolArgumentDigest,
@@ -64,7 +64,7 @@ export interface AssistantChatSession {
 }
 
 export interface AssistantChatEvent {
-  type: 'new_message' | 'content' | 'tool_calls';
+  type: 'new_message' | 'content' | 'tool_calls' | 'tool_call_status';
   body?: unknown;
 }
 type Emit = (event: AssistantChatEvent) => Promise<void>;
@@ -126,8 +126,8 @@ export class AssistantChatAdapter {
       text: request.messages[0].content.content,
       signal,
       onText: async (body) => emit({ type: 'content', body }),
+      onToolEvent: async (event) => this.emitToolEvent(event, emit),
     });
-    await this.emitPending(result.pending, emit);
     return result;
   }
 
@@ -213,6 +213,19 @@ export class AssistantChatAdapter {
     }
     // Backend results supplied by a browser are rejected by the schema, never passed to a model.
     await emit({ type: 'new_message' });
+    for (const call of calls)
+      await this.emitToolEvent(
+        {
+          call,
+          auto: false,
+          status: call.status,
+          result:
+            call.status === 'rejected'
+              ? { code: 'TOOL_REJECTED' }
+              : call.result,
+        },
+        emit,
+      );
     const result = await this.turn.continue({
       actor,
       employee: session.employee,
@@ -220,8 +233,8 @@ export class AssistantChatAdapter {
       history: [...session.history, ...results],
       signal,
       onText: async (body) => emit({ type: 'content', body }),
+      onToolEvent: async (event) => this.emitToolEvent(event, emit),
     });
-    await this.emitPending(result.pending, emit);
     return result;
   }
 
@@ -312,14 +325,46 @@ export class AssistantChatAdapter {
     };
   }
 
-  private async emitPending(calls: readonly StoredToolCall[], emit: Emit) {
-    if (calls.length)
+  private async emitToolEvent(event: AssistantToolEvent, emit: Emit) {
+    const { call, status } = event;
+    const toolCall = {
+      id: call.modelCallId!,
+      name: call.tool,
+      args: call.arguments,
+      auto: event.auto,
+      execution: 'backend',
+      willInterrupt: status === 'pending',
+      invokeStatus:
+        status === 'pending'
+          ? 'interrupted'
+          : status === 'executing'
+            ? 'running'
+            : status === 'completed'
+              ? 'success'
+              : 'error',
+    };
+    if (status === 'pending' || status === 'executing')
       await emit({
         type: 'tool_calls',
-        body: calls.map((call) => ({
-          ...this.wireCall(call),
-          invokeStatus: 'interrupted',
-        })),
+        body: [toolCall],
+      });
+    else
+      await emit({
+        type: 'tool_call_status',
+        body: {
+          toolCall,
+          status:
+            status === 'completed'
+              ? 'confirmed'
+              : status === 'rejected'
+                ? 'rejected'
+                : 'error',
+          // The existing page decoder reads error content as text, successful output as JSON.
+          content:
+            status === 'completed'
+              ? capabilityJsonValue(event.result)
+              : JSON.stringify(capabilityJsonValue(event.result)),
+        },
       });
   }
 }

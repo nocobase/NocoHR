@@ -20,6 +20,7 @@ import {
   toolArgumentDigest,
   type StoredToolCall,
   type ToolAuthorization,
+  type ToolCallStatus,
 } from './tool-executor.js';
 
 export interface AssistantModel {
@@ -50,6 +51,14 @@ export interface AssistantTurnContext {
   history: readonly BaseMessage[];
   signal: AbortSignal;
   onText?: (text: string) => Promise<void>;
+  onToolEvent?: (event: AssistantToolEvent) => Promise<void>;
+}
+
+export interface AssistantToolEvent {
+  call: Pick<StoredToolCall, 'modelCallId' | 'tool' | 'arguments'>;
+  auto: boolean;
+  status: ToolCallStatus;
+  result?: unknown;
 }
 
 const turnState = Annotation.Root({
@@ -141,37 +150,10 @@ export class AssistantTurn {
             input.employee.username,
             request.name,
           );
-          if (decision === 'deny') {
-            replies.push(
-              new ToolMessage({
-                tool_call_id: request.id,
-                content: JSON.stringify({ code: 'TOOL_FORBIDDEN' }),
-              }),
-            );
-            continue;
-          }
-          if (
-            decision === 'ask' ||
-            tool.defaultPermission !== 'ALLOW' ||
-            tool.execution === 'frontend'
-          ) {
-            const call: StoredToolCall = {
-              id: randomUUID(),
-              userId: String(input.actor.id),
-              sessionId: input.sessionId,
-              employee: input.employee.username,
-              tool: request.name,
-              messageId: message.id,
-              modelCallId: request.id,
-              arguments: capabilityJsonValue(request.args),
-              argumentDigest: toolArgumentDigest(request.args),
-              status: 'pending',
-            };
-            await this.pending.create(call);
-            pending.push(call);
-            continue;
-          }
-          // Persist even automatically allowed calls before executing them, so a worker loss cannot replay a write.
+          const auto =
+            decision === 'allow' &&
+            tool.defaultPermission === 'ALLOW' &&
+            tool.execution !== 'frontend';
           const call: StoredToolCall = {
             id: randomUUID(),
             userId: String(input.actor.id),
@@ -184,9 +166,35 @@ export class AssistantTurn {
             argumentDigest: toolArgumentDigest(request.args),
             status: 'pending',
           };
+          const notify = (status: ToolCallStatus, result?: unknown) =>
+            input.onToolEvent?.({ call, auto, status, result });
+          if (decision === 'deny') {
+            await notify('rejected', { code: 'TOOL_FORBIDDEN' });
+            replies.push(
+              new ToolMessage({
+                tool_call_id: request.id,
+                content: JSON.stringify({ code: 'TOOL_FORBIDDEN' }),
+              }),
+            );
+            continue;
+          }
+          // Persist even automatically allowed calls before executing them, so a worker loss cannot replay a write.
           await this.pending.create(call);
+          if (!auto) {
+            pending.push(call);
+            await notify('pending');
+            continue;
+          }
+          await notify('executing');
           // The caller supplies the same durable store to its executor; recording alone is insufficient to run a tool.
-          const result = await this.executeAllowed(input.actor, call);
+          let result: unknown;
+          try {
+            result = await this.executeAllowed(input.actor, call);
+          } catch (error) {
+            await notify('uncertain', { code: 'TOOL_EXECUTION_UNCERTAIN' });
+            throw error;
+          }
+          await notify('completed', result);
           replies.push(
             new ToolMessage({
               tool_call_id: request.id,

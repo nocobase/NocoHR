@@ -51,7 +51,17 @@ export function compileProcessArtifact(
     enabled: definition.enabled,
     entry: definition.entry,
     nodes: definition.nodes,
-    inputSchema: z.toJSONSchema(definition.inputSchema),
+    inputSchema: z.toJSONSchema(definition.inputSchema, {
+      override: ({ zodSchema }) => {
+        // JSON Schema conversion silently ignores refinements and overwrites, including nested ones.
+        if (
+          zodSchema._zod.def.checks?.some((check) =>
+            ['custom', 'overwrite'].includes(check._zod.def.check),
+          )
+        )
+          throw new Error('UNSUPPORTED_PROCESS_INPUT_SCHEMA');
+      },
+    }),
   });
   // Also prove that source-free validation supports this schema before publishing it.
   z.fromJSONSchema(payload.inputSchema);

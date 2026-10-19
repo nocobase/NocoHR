@@ -20,11 +20,17 @@ import {
 import { assistantChatProtocol as protocol } from './assistant-chat-protocol.js';
 
 export function createAssistantChatFixture(
-  options: { calls?: number; failTool?: boolean } = {},
+  options: {
+    calls?: number;
+    failTool?: boolean;
+    autoCalls?: number;
+    denyAuto?: boolean;
+  } = {},
 ) {
   const actor = { id: 'synthetic-owner', roles: [], isRoot: false };
   const rows = new Map<string, StoredToolCall>();
   const counts = {
+    creates: 0,
     reads: 0,
     claims: 0,
     completes: 0,
@@ -35,6 +41,7 @@ export function createAssistantChatFixture(
     create(call: StoredToolCall): Promise<void>;
   } = {
     async create(call) {
+      counts.creates++;
       rows.set(call.id, structuredClone(call));
     },
     async find(id) {
@@ -64,8 +71,12 @@ export function createAssistantChatFixture(
     async authorize() {
       if (!permitted) throw new Error('ACCESS_REVOKED');
     },
-    async decision() {
-      return 'ask' as const;
+    async decision(_actor: unknown, _employee: string, tool: string) {
+      return tool === 'readValue'
+        ? options.denyAuto
+          ? ('deny' as const)
+          : ('allow' as const)
+        : ('ask' as const);
     },
   };
   const tool = defineTools({
@@ -83,7 +94,25 @@ export function createAssistantChatFixture(
       return { id: 'synthetic-draft' };
     },
   });
-  const tools = new Map([['saveDraft', tool]]);
+  const automatic = defineTools({
+    scope: 'SPECIFIED',
+    defaultPermission: 'ALLOW',
+    execution: 'backend',
+    definition: {
+      name: 'readValue',
+      description: 'Read a synthetic value',
+      schema: z.strictObject({}),
+    },
+    async invoke() {
+      counts.invokes++;
+      if (options.failTool) throw new Error('SYNTHETIC_WRITE_UNCERTAIN');
+      return { value: 42 };
+    },
+  });
+  const tools = new Map([
+    ['saveDraft', tool],
+    ['readValue', automatic],
+  ]);
   const container = new ServiceContainer();
   const modelInputs: (readonly BaseMessage[])[] = [];
   const model: AssistantModel = {
@@ -93,17 +122,21 @@ export function createAssistantChatFixture(
       if (counts.models === 1)
         return new AIMessage({
           content: '',
-          tool_calls: Array.from(
-            { length: options.calls ?? 1 },
-            (_, index) => ({
+          tool_calls: [
+            ...Array.from({ length: options.autoCalls ?? 0 }, (_, index) => ({
+              id: `synthetic-auto-call-${index + 1}`,
+              name: 'readValue',
+              args: {},
+            })),
+            ...Array.from({ length: options.calls ?? 1 }, (_, index) => ({
               id:
                 index === 0
                   ? 'synthetic-model-call'
                   : `synthetic-model-call-${index + 1}`,
               name: 'saveDraft',
               args: { text: 'A synthetic draft' },
-            }),
-          ),
+            })),
+          ],
         });
       await input.onText('Your decision has been recorded.');
       return new AIMessage('Your decision has been recorded.');
@@ -119,7 +152,7 @@ export function createAssistantChatFixture(
     employee: {
       username: protocol.employee,
       systemPrompt: 'Synthetic assistant.',
-      tools: [{ name: 'saveDraft' }],
+      tools: [{ name: 'saveDraft' }, { name: 'readValue' }],
     },
     model: protocol.model,
     history: [],

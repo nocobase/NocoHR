@@ -56,3 +56,31 @@ it('rejects nonserializable input contracts rather than dropping their validatio
     ),
   ).toThrow();
 });
+
+it.each([
+  z
+    .object({ start: z.number(), end: z.number() })
+    .refine((x) => x.end > x.start),
+  z.object({ start: z.number(), end: z.number() }).superRefine((x, ctx) => {
+    if (x.end <= x.start)
+      ctx.addIssue({ code: 'custom', message: 'Invalid range' });
+  }),
+  z.object({ ranges: z.array(z.number().refine((x) => x > 0)).optional() }),
+  z.union([z.string().refine((x) => x === 'allowed'), z.number()]),
+  z.number().check((ctx) => {
+    if (ctx.value < 0)
+      ctx.issues.push({
+        code: 'custom',
+        message: 'Negative',
+        input: ctx.value,
+      });
+  }),
+  z.number().overwrite((x) => Math.abs(x)),
+])(
+  'refuses custom constraints anywhere in a published input schema',
+  (inputSchema) => {
+    expect(() =>
+      compileProcessArtifact({ ...source, inputSchema }, handlers),
+    ).toThrow('UNSUPPORTED_PROCESS_INPUT_SCHEMA');
+  },
+);

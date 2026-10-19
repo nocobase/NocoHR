@@ -9,8 +9,22 @@ import { describe, expect, it } from 'vitest';
 import { NocoBaseChatTransport } from '../../client/extensions/nocobase-ai/providers/chat-transport.js';
 import { createNocoBaseUIMessageStream } from '../../client/extensions/nocobase-ai/providers/ui-message-stream.js';
 import type { AIService } from '../../client/extensions/nocobase-ai/services/types.js';
+import type { AssistantChatEvent } from '../../server/providers/assistant/chat-adapter.js';
 import { assistantChatProtocol as protocol } from '../fixtures/assistant-chat-protocol.js';
 import { createAssistantChatFixture } from '../fixtures/assistant-chat-runtime.js';
+
+async function decodeEvents(events: readonly AssistantChatEvent[]) {
+  const bytes = new TextEncoder().encode(
+    events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''),
+  );
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
+  return Array.fromAsync(createNocoBaseUIMessageStream(stream));
+}
 
 describe('existing chat page protocol adapter', () => {
   it('uses fixtures that match requests from the actual page transport', async () => {
@@ -110,21 +124,20 @@ describe('existing chat page protocol adapter', () => {
       'Your decision has been recorded.',
     );
     expect(f.counts.invokes).toBe(1);
-    expect(f.events.slice(2)).toEqual([
-      { type: 'new_message' },
-      { type: 'content', body: 'Your decision has been recorded.' },
+    expect(f.events.slice(2).map((event) => event.type)).toEqual([
+      'new_message',
+      'tool_call_status',
+      'content',
     ]);
 
-    const bytes = new TextEncoder().encode(
-      f.events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''),
+    const chunks = await decodeEvents(f.events);
+    expect(chunks).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-output-available',
+        toolCallId: 'synthetic-model-call',
+        output: { id: 'synthetic-draft' },
+      }),
     );
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(bytes);
-        controller.close();
-      },
-    });
-    const chunks = await Array.fromAsync(createNocoBaseUIMessageStream(stream));
     expect(chunks).toContainEqual(
       expect.objectContaining({
         type: 'tool-input-available',
@@ -153,6 +166,132 @@ describe('existing chat page protocol adapter', () => {
     expect(f.modelInputs[1].at(-1)).toBeInstanceOf(ToolMessage);
     expect(f.modelInputs[1].at(-1)?.content).toBe('{"code":"TOOL_REJECTED"}');
     expect(f.counts.invokes).toBe(0);
+    expect(await decodeEvents(f.events)).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-output-error',
+        toolCallId: 'synthetic-model-call',
+        errorText: expect.stringContaining('TOOL_REJECTED'),
+      }),
+    );
+  });
+
+  it('streams automatic tool inputs and persisted results before the model reply', async () => {
+    const f = createAssistantChatFixture({ calls: 0, autoCalls: 1 });
+    await f.send();
+    const chunks = await decodeEvents(f.events);
+    expect(chunks).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-input-available',
+        toolCallId: 'synthetic-auto-call-1',
+        toolName: 'readValue',
+        input: {},
+        providerMetadata: {
+          nocobase: expect.objectContaining({ requiresApproval: false }),
+        },
+      }),
+    );
+    expect(chunks).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-output-available',
+        toolCallId: 'synthetic-auto-call-1',
+        output: { value: 42 },
+      }),
+    );
+    expect(f.events.map((event) => event.type)).toEqual([
+      'new_message',
+      'tool_calls',
+      'tool_call_status',
+      'content',
+    ]);
+    expect(f.counts).toMatchObject({
+      creates: 1,
+      reads: 1,
+      claims: 1,
+      completes: 1,
+      invokes: 1,
+    });
+  });
+
+  it('keeps automatic, approved and rejected results distinct in a mixed group', async () => {
+    const f = createAssistantChatFixture({ calls: 2, autoCalls: 1 });
+    await f.send();
+    await f.decide();
+    await f
+      .adapter()
+      .decide(
+        f.actor,
+        f.session(),
+        f.messageId(),
+        'synthetic-model-call-2',
+        protocol.reject,
+      );
+    await f.resume();
+    const outputs = (await decodeEvents(f.events)).filter(
+      (chunk) =>
+        chunk.type === 'tool-output-available' ||
+        chunk.type === 'tool-output-error',
+    );
+    expect(outputs).toEqual([
+      expect.objectContaining({
+        type: 'tool-output-available',
+        toolCallId: 'synthetic-auto-call-1',
+        output: { value: 42 },
+      }),
+      expect.objectContaining({
+        type: 'tool-output-available',
+        toolCallId: 'synthetic-model-call',
+        output: { id: 'synthetic-draft' },
+      }),
+      expect.objectContaining({
+        type: 'tool-output-error',
+        toolCallId: 'synthetic-model-call-2',
+        errorText: expect.stringContaining('TOOL_REJECTED'),
+      }),
+    ]);
+    expect(
+      f.modelInputs[1].slice(-3).map((message) => message.content),
+    ).toEqual([
+      '{"value":42}',
+      '{"id":"synthetic-draft"}',
+      '{"code":"TOOL_REJECTED"}',
+    ]);
+    expect(f.counts.invokes).toBe(2);
+  });
+
+  it('shows forbidden or uncertain automatic calls without reporting success or replaying them', async () => {
+    const denied = createAssistantChatFixture({
+      calls: 0,
+      autoCalls: 1,
+      denyAuto: true,
+    });
+    await denied.send();
+    expect(denied.counts.invokes).toBe(0);
+    expect(await decodeEvents(denied.events)).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-output-error',
+        toolCallId: 'synthetic-auto-call-1',
+        errorText: expect.stringContaining('TOOL_FORBIDDEN'),
+      }),
+    );
+    const uncertain = createAssistantChatFixture({
+      calls: 0,
+      autoCalls: 1,
+      failTool: true,
+    });
+    await expect(uncertain.send()).rejects.toThrow('SYNTHETIC_WRITE_UNCERTAIN');
+    expect([...uncertain.rows.values()][0].status).toBe('uncertain');
+    expect(uncertain.counts.invokes).toBe(1);
+    const chunks = await decodeEvents(uncertain.events);
+    expect(chunks).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-output-error',
+        toolCallId: 'synthetic-auto-call-1',
+        errorText: expect.stringContaining('TOOL_EXECUTION_UNCERTAIN'),
+      }),
+    );
+    expect(chunks.some((chunk) => chunk.type === 'tool-output-available')).toBe(
+      false,
+    );
   });
 
   it('waits for every call in the same model message before continuing', async () => {
