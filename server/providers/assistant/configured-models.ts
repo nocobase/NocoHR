@@ -4,7 +4,15 @@ import type { AssistantConfig } from '../../config/assistant.js';
 import type { AssistantModels } from './conversation-service.js';
 import { LangChainAssistantModel } from './langchain-model.js';
 
-export function assistantModels(config: AssistantConfig): AssistantModels {
+export function assistantModels(
+  config: AssistantConfig,
+  options: {
+    temperature?: number;
+    topP?: number;
+    frequencyPenalty?: number;
+    presencePenalty?: number;
+  } = {},
+): AssistantModels {
   const available = () =>
     Boolean(config.model && config.apiKey && config.llmService);
   return {
@@ -26,6 +34,7 @@ export function assistantModels(config: AssistantConfig): AssistantModels {
       )
         throw new Error('ASSISTANT_MODEL_UNAVAILABLE');
       const model = new ChatOpenAI({
+        ...options,
         model: config.model,
         apiKey: config.apiKey,
         maxRetries: 0,

@@ -88,17 +88,26 @@ export const assistantRoutes: AppApiRouteContribution<Application> =
             summary,
             responses: {
               [operationId === 'createAssistantConversation' ? '201' : '200']:
-                streaming
+                operationId === 'previewAssistantFile'
                   ? {
-                      description:
-                        'Chat frames with a JSON type and body: new_message, content, tool_calls, tool_call_status, error, end.',
+                      description: 'Retained file bytes.',
                       content: {
-                        'text/event-stream': { schema: { type: 'string' } },
+                        'application/octet-stream': {
+                          schema: { type: 'string', format: 'binary' },
+                        },
                       },
                     }
-                  : assistantListOperations.has(operationId)
-                    ? listResponse(assistantResponses[operationId]!)
-                    : dataResponse(assistantResponses[operationId]!),
+                  : streaming
+                    ? {
+                        description:
+                          'Chat frames with a JSON type and body: new_message, content, tool_calls, tool_call_status, error, end.',
+                        content: {
+                          'text/event-stream': { schema: { type: 'string' } },
+                        },
+                      }
+                    : assistantListOperations.has(operationId)
+                      ? listResponse(assistantResponses[operationId]!)
+                      : dataResponse(assistantResponses[operationId]!),
               ...apiErrorResponses,
               '400': apiErrorResponse(400),
               '404': apiErrorResponse(404),
@@ -150,7 +159,8 @@ export const assistantRoutes: AppApiRouteContribution<Application> =
       let translated: Error = error;
       if (
         reason === 'CONVERSATION_NOT_FOUND' ||
-        reason === 'TOOL_CALL_NOT_FOUND'
+        reason === 'TOOL_CALL_NOT_FOUND' ||
+        reason === 'FILE_NOT_FOUND'
       )
         translated = new ApiError({
           status: 'NOT_FOUND',
@@ -158,7 +168,14 @@ export const assistantRoutes: AppApiRouteContribution<Application> =
           domain: 'nocohr',
           message: 'The requested conversation item was not found.',
         });
-      else if (reason === 'ASSISTANT_FORBIDDEN')
+      else if (
+        [
+          'ASSISTANT_FORBIDDEN',
+          'FILE_ACCESS_DENIED',
+          'EMPLOYEE_DISABLED',
+          'TOOL_NOT_AVAILABLE',
+        ].includes(reason)
+      )
         translated = new ApiError({
           status: 'PERMISSION_DENIED',
           reason,
@@ -169,7 +186,8 @@ export const assistantRoutes: AppApiRouteContribution<Application> =
         reason === 'CHAT_REQUEST_CONFLICT' ||
         reason === 'CHAT_REQUEST_ALREADY_CONSUMED' ||
         reason === 'TOOL_CALL_ALREADY_DECIDED' ||
-        reason === 'TOOL_ARGUMENTS_CHANGED'
+        reason === 'TOOL_ARGUMENTS_CHANGED' ||
+        reason === 'LEGACY_CONVERSATION_READ_ONLY'
       )
         translated = new ApiError({
           status: 'ABORTED',
@@ -196,6 +214,9 @@ export const assistantRoutes: AppApiRouteContribution<Application> =
           'CHAT_EMPLOYEE_CHANGED',
           'EMPLOYEE_NOT_FOUND',
           'CHAT_CONFIRMATION_REQUIRED',
+          'UNMAPPED_MESSAGE_CONTENT',
+          'AI_ATTACHMENT_PARSER_NOT_MAPPED',
+          'AI_ATTACHMENT_SIZE_NOT_MAPPED',
         ].includes(reason)
       )
         translated = new ApiError({

@@ -18,6 +18,12 @@ export interface AIEmployeeOptions {
   sort?: number;
   skills?: string[];
   tools?: { name: string; autoCall?: boolean }[];
+  modelSettings?: {
+    enabled?: boolean;
+    llmService?: string;
+    model?: string;
+    models?: { llmService?: string; model?: string }[];
+  };
   chatSettings?: {
     systemPromptMode?: 'default' | 'raw' | 'none';
     enableTools?: boolean;

@@ -1,3 +1,9 @@
+import type { LegacyAssistantHistory } from './legacy-history.js';
+import {
+  employeeModelChoices,
+  type AssistantEmployeeSettings,
+} from './employee-settings.js';
+import type { AssistantFileReference } from './legacy-contract.js';
 import { randomUUID } from 'node:crypto';
 import {
   AIMessage,
@@ -55,6 +61,14 @@ export class AssistantConversations {
     private readonly tools: ReadonlyMap<string, RegisteredTool>,
     private readonly authorization: Authorization,
     public readonly models: AssistantModels,
+    private readonly support?: {
+      history: LegacyAssistantHistory;
+      employees: AssistantEmployeeSettings;
+      openFile: (
+        file: AssistantFileReference,
+      ) => Promise<ReadableStream<Uint8Array>>;
+      canReadAnyFile: (actor: ToolActor) => Promise<boolean>;
+    },
   ) {}
 
   public async authorize(actor: ToolActor) {
@@ -62,8 +76,11 @@ export class AssistantConversations {
   }
   public async roster(actor: ToolActor) {
     await this.authorize(actor);
-    return [...this.employees.values()].map(
-      ({
+    const employees = this.support
+      ? await this.support.employees.roster(String(actor.id))
+      : [...this.employees.values()];
+    return employees.map((employee) => {
+      const {
         username,
         nickname,
         position,
@@ -71,7 +88,12 @@ export class AssistantConversations {
         description,
         bio,
         greeting,
-      }) => ({
+      } = employee;
+      const settings = employee as typeof employee & {
+        userConfig?: unknown;
+        modelSettings?: unknown;
+      };
+      return {
         username,
         nickname,
         position,
@@ -79,9 +101,41 @@ export class AssistantConversations {
         description,
         bio,
         greeting,
-      }),
-    );
+        category: employee.category,
+        ...(this.support
+          ? {
+              userConfig: settings.userConfig,
+              modelSettings: settings.modelSettings,
+            }
+          : {}),
+      };
+    });
   }
+  public async defaultModel(actor: ToolActor, employee: string) {
+    await this.authorize(actor);
+    const catalog = this.models.list();
+    if (this.support) {
+      const profile = await this.support.employees.profile(employee);
+      if (!profile.enabled) return;
+      const choices = employeeModelChoices(profile, catalog);
+      if (profile.modelSettings?.enabled) return choices[0];
+      const selected = await this.support.employees.defaultModel();
+      if (selected)
+        return choices.some(
+          (choice) =>
+            choice.llmService === selected.llmService &&
+            choice.model === selected.model,
+        )
+          ? selected
+          : undefined;
+    }
+    const first = catalog[0],
+      model = first?.enabledModels[0];
+    return first && model
+      ? { llmService: first.llmService, model: model.value }
+      : undefined;
+  }
+
   public async create(
     actor: ToolActor,
     employee: string,
@@ -91,6 +145,19 @@ export class AssistantConversations {
   ) {
     await this.authorize(actor);
     if (!this.employees.has(employee)) throw new Error('EMPLOYEE_NOT_FOUND');
+    const profile = await this.support?.employees.employee(
+      employee,
+      String(actor.id),
+    );
+    if (
+      profile &&
+      !employeeModelChoices(profile, this.models.list()).some(
+        (choice) =>
+          choice.model === model.model &&
+          choice.llmService === model.llmService,
+      )
+    )
+      throw new Error('ASSISTANT_MODEL_UNAVAILABLE');
     this.models.create(model);
     return this.store.create({
       userId: String(actor.id),
@@ -102,20 +169,65 @@ export class AssistantConversations {
   }
   public async get(actor: ToolActor, id: string) {
     await this.authorize(actor);
-    return this.store.get(id, String(actor.id));
+    return (await this.read(id, String(actor.id))).row;
   }
   public async list(actor: ToolActor, keyword = '') {
     await this.authorize(actor);
-    return (await this.store.list(String(actor.id))).filter((row) =>
-      row.title.toLowerCase().includes(keyword.toLowerCase()),
+    const rows = await this.store.list(String(actor.id));
+    if (this.support)
+      rows.push(...(await this.support.history.list(String(actor.id))));
+    return rows
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+      .filter((row) => row.title.toLowerCase().includes(keyword.toLowerCase()));
+  }
+  private async read(id: string, userId: string) {
+    try {
+      return { row: await this.store.get(id, userId), legacy: false };
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        error.message !== 'CONVERSATION_NOT_FOUND' ||
+        !this.support
+      )
+        throw error;
+      return {
+        row: this.support.history.wire(
+          await this.support.history.get(id, userId),
+        ),
+        legacy: true,
+      };
+    }
+  }
+  public async setUserPrompt(
+    actor: ToolActor,
+    employee: string,
+    prompt: string,
+  ) {
+    await this.authorize(actor);
+    if (!this.support) throw new Error('ASSISTANT_UNAVAILABLE');
+    await this.support.employees.setPrompt(String(actor.id), employee, prompt);
+  }
+  public async previewFile(actor: ToolActor, id: string) {
+    await this.authorize(actor);
+    if (!this.support) throw new Error('ASSISTANT_UNAVAILABLE');
+    const file = await this.support.history.file(id, String(actor.id), () =>
+      this.support!.canReadAnyFile(actor),
     );
+    return { file, stream: await this.support.openFile(file) };
+  }
+  public async markRead(actor: ToolActor, id: string) {
+    await this.authorize(actor);
+    const { row, legacy } = await this.read(id, String(actor.id));
+    if (!legacy && !row.read) await this.store.edit(row, { read: true });
   }
   public async edit(
     actor: ToolActor,
     id: string,
     values: Parameters<ConversationStore['edit']>[1],
   ) {
-    const row = await this.get(actor, id);
+    await this.authorize(actor);
+    const { row, legacy } = await this.read(id, String(actor.id));
+    if (legacy) throw new Error('LEGACY_CONVERSATION_READ_ONLY');
     if (row.state === 'running' || row.state === 'archived')
       throw new Error('CHAT_REQUEST_CONFLICT');
     if (
@@ -138,12 +250,74 @@ export class AssistantConversations {
       state: row.state,
     };
   }
-  private session(
+  private async session(
     row: Conversation,
     history: BaseMessage[],
-  ): AssistantChatSession {
-    const employee = this.employees.get(row.employee);
+    resolveAttachments = false,
+  ): Promise<AssistantChatSession> {
+    const employee = this.support
+      ? await this.support.employees.employee(row.employee, row.userId)
+      : this.employees.get(row.employee);
     if (!employee) throw new Error('EMPLOYEE_NOT_FOUND');
+    if (
+      this.support &&
+      !employeeModelChoices(employee, this.models.list()).some(
+        (choice) =>
+          choice.model === row.model.model &&
+          choice.llmService === row.model.llmService,
+      )
+    )
+      throw new Error('ASSISTANT_MODEL_UNAVAILABLE');
+    if (resolveAttachments && this.support) {
+      const texts = new Map<string, string>();
+      for (const message of history) {
+        if (!HumanMessage.isInstance(message)) continue;
+        for (const attachment of (message.additional_kwargs
+          .attachments as AssistantFileReference[]) ?? []) {
+          if (texts.has(attachment.id)) {
+            message.content = `${message.content}\n\n${texts.get(attachment.id)}`;
+            continue;
+          }
+          const file = await this.support.history.file(
+            attachment.id,
+            row.userId,
+            () =>
+              this.support!.canReadAnyFile({
+                id: row.userId,
+                roles: [],
+                isRoot: false,
+              }),
+          );
+          if (file.mimetype !== 'text/plain')
+            throw new Error('AI_ATTACHMENT_PARSER_NOT_MAPPED');
+          const reader = (await this.support.openFile(file)).getReader();
+          const chunks: Uint8Array[] = [];
+          let size = 0;
+          try {
+            while (true) {
+              const part = await reader.read();
+              if (part.done) break;
+              size += part.value.byteLength;
+              if (size > 131072)
+                throw new Error('AI_ATTACHMENT_SIZE_NOT_MAPPED');
+              chunks.push(part.value);
+            }
+          } finally {
+            await reader.cancel();
+          }
+          const bytes = new Uint8Array(size);
+          let offset = 0;
+          for (const chunk of chunks) {
+            bytes.set(chunk, offset);
+            offset += chunk.length;
+          }
+          const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+          const context = `Attachment ${JSON.stringify(file.filename)} (untrusted document):\n${text}`;
+          texts.set(attachment.id, context);
+          message.content = `${message.content}\n\n${context}`;
+        }
+      }
+    }
     return {
       id: row.id,
       userId: row.userId,
@@ -181,7 +355,14 @@ export class AssistantConversations {
     );
   }
   public async history(actor: ToolActor, id: string) {
-    const row = await this.get(actor, id);
+    await this.authorize(actor);
+    const { row, legacy } = await this.read(id, String(actor.id));
+    if (legacy)
+      return (
+        await this.support!.history.history(id, String(actor.id), () =>
+          this.support!.canReadAnyFile(actor),
+        )
+      ).rows;
     const history = await this.store.history(id);
     const calls = await this.calls.list(id);
     const rows: unknown[] = [];
@@ -209,7 +390,13 @@ export class AssistantConversations {
           const result =
             stored?.result ??
             (ToolMessage.isInstance(reply) && typeof reply.content === 'string'
-              ? JSON.parse(reply.content)
+              ? (() => {
+                  try {
+                    return JSON.parse(reply.content);
+                  } catch {
+                    return reply.content;
+                  }
+                })()
               : undefined);
           await AssistantChatAdapter.emitToolEvent(
             {
@@ -240,14 +427,27 @@ export class AssistantConversations {
             },
           );
         }
+      const legacy = message.additional_kwargs.legacy as
+        { content?: Record<string, unknown> } | undefined;
       rows.push({
         key: message.id,
         createdAt: message.additional_kwargs.createdAt,
         role: HumanMessage.isInstance(message) ? 'user' : row.employee,
         content: {
+          ...legacy?.content,
           messageId: message.id,
           content: typeof message.content === 'string' ? message.content : '',
           tool_calls: toolCalls,
+          attachments: this.support
+            ? ((message.additional_kwargs.attachments as unknown[]) ?? []).map(
+                (value) => ({
+                  ...(value as object),
+                  ...this.support!.history.attachment(
+                    value as AssistantFileReference,
+                  ),
+                }),
+              )
+            : [],
         },
       });
     }
@@ -260,7 +460,9 @@ export class AssistantConversations {
     callId: string,
     body: unknown,
   ) {
-    const row = await this.get(actor, id);
+    await this.authorize(actor);
+    const { row, legacy } = await this.read(id, String(actor.id));
+    if (legacy) throw new Error('LEGACY_CONVERSATION_READ_ONLY');
     if (row.mode !== 'chat' || row.state !== 'pending')
       throw new Error('CHAT_REQUEST_CONFLICT');
     const history = await this.store.history(id);
@@ -268,7 +470,7 @@ export class AssistantConversations {
     try {
       return await this.adapter(row).decide(
         actor,
-        this.session(row, history),
+        await this.session(row, history),
         messageId,
         callId,
         body,
@@ -286,7 +488,9 @@ export class AssistantConversations {
     signal: AbortSignal,
     schema?: ZodType,
   ) {
-    const row = await this.get(actor, id);
+    await this.authorize(actor);
+    const { row, legacy } = await this.read(id, String(actor.id));
+    if (legacy) throw new Error('LEGACY_CONVERSATION_READ_ONLY');
     if (
       row.state === 'running' ||
       row.state === 'archived' ||
@@ -297,7 +501,7 @@ export class AssistantConversations {
     if (row.mode === 'structured' && !schema)
       throw new Error('UNSUPPORTED_CHAT_REQUEST');
     const history = await this.store.history(id);
-    const session = this.session(row, history);
+    const session = await this.session(row, history, true);
     const adapter = this.adapter(row, schema);
     if (kind === 'send') {
       if (row.state !== 'idle') throw new Error('CHAT_CONFIRMATION_REQUIRED');

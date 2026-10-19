@@ -701,22 +701,23 @@ describe('application conversation persistence and request lifecycle', () => {
     expect(await reopened.getConversationActiveState(id)).toBe('idle');
     expect(f.state.invokes).toBe(1);
     expect(
-      (await service.listConversations()).some((row) => row.id === 'legacy-1'),
+      (await service.listConversations()).some((row) => row.id === id),
     ).toBe(true);
-    expect(
-      (
-        await service.getConversationMessages('legacy-1', { updateRead: true })
-      )[0]!.metadata?.serverMessageId,
-    ).toBe('123');
     await expect(
-      service.sendMessagesStream({ sessionId: 'legacy-1' }),
-    ).rejects.toThrow('LEGACY_CONVERSATION_READ_ONLY');
+      service.sendMessagesStream({ ...f.sendBody(), sessionId: 'legacy-1' }),
+    ).rejects.toThrow('CONVERSATION_NOT_FOUND');
     await expect(
       service.updateConversationTitle('legacy-1', 'Changed'),
-    ).rejects.toThrow('LEGACY_CONVERSATION_READ_ONLY');
+    ).rejects.toThrow('CONVERSATION_NOT_FOUND');
     expect(
       operations.filter((operation) => operation.includes('legacy-1')),
-    ).toEqual(['GET aiEmployee/conversations/legacy-1/messages']);
+    ).toEqual([
+      'POST assistantConversations/legacy-1/send',
+      'PATCH assistantConversations/legacy-1',
+    ]);
+    expect(
+      operations.some((operation) => operation.includes('aiEmployee/')),
+    ).toBe(false);
     expect(
       operations.filter((operation) => operation === 'GET assistantRuntime'),
     ).toHaveLength(2);
@@ -765,7 +766,7 @@ describe('application conversation persistence and request lifecycle', () => {
         timeZone: 'UTC',
         sessionId: 'legacy-1',
       }),
-    ).rejects.toThrow('legacy conversation is read-only');
+    ).rejects.toThrow('CONVERSATION_NOT_FOUND');
   });
 
   it('uses the configured LangChain model for text streaming and tool-free structured output without exposing configuration secrets', async () => {

@@ -26,6 +26,8 @@ const conversation = z.object({
   state: z.string(),
 });
 export const assistantResponses: Record<string, z.ZodType> = {
+  replaceAssistantUserPrompt: z.object({ prompt: z.string() }),
+  previewAssistantFile: z.unknown(),
   getAssistantRuntime: z.object({ enabled: z.boolean() }),
   listAssistantEmployees: z.object({
     username: z.string(),
@@ -35,6 +37,17 @@ export const assistantResponses: Record<string, z.ZodType> = {
     description: z.string().optional(),
     bio: z.string().optional(),
     greeting: z.string().optional(),
+    userConfig: z
+      .object({ prompt: z.string().nullable().optional() })
+      .optional(),
+    modelSettings: z
+      .object({
+        enabled: z.boolean().optional(),
+        model: z.string().optional(),
+        llmService: z.string().optional(),
+        models: z.array(model).optional(),
+      })
+      .optional(),
   }),
   listAssistantModels: z.object({
     llmService: z.string(),
@@ -52,6 +65,7 @@ export const assistantResponses: Record<string, z.ZodType> = {
       messageId: z.string(),
       content: z.string(),
       tool_calls: z.array(call),
+      attachments: z.array(z.unknown()).optional(),
     }),
   }),
   decideAssistantToolCall: z.object({

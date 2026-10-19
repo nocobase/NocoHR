@@ -48,8 +48,15 @@ export default class UpgradePreflight extends AppCommand {
         verified: false,
         employees: new Set(resources.employees.keys()),
         tools: new Set(resources.tools.keys()),
-        providers: new Set(),
-        capabilities: new Set(),
+        providers: new Set(['openai-completions']),
+        capabilities: new Set([
+          'text',
+          'backend-tools',
+          'retained-history',
+          'transcript-continuation',
+          'personal-prompts',
+          'text-attachments',
+        ]),
         approvalTransferVerified: false,
       },
       workflows: {

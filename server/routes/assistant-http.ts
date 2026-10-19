@@ -23,6 +23,7 @@ export class AssistantInputError extends Error {
 }
 export const assistantHttpInputs: Record<string, z.ZodType> = {
   createAssistantConversation: createBody,
+  replaceAssistantUserPrompt: z.strictObject({ prompt: z.string() }),
   updateAssistantConversation: editBody,
   decideAssistantToolCall: decisionRequest,
   sendAssistantMessage: sendRequest.omit({ sessionId: true }),
@@ -88,6 +89,45 @@ export function createAssistantRoutes(options: {
         data: await options.service().roster(options.actor(c)),
         meta: {},
       }),
+  );
+  r.put(
+    '/assistantEmployees/:id/userPrompt',
+    security,
+    ...doc(
+      'replaceAssistantUserPrompt',
+      'Replace the caller’s personal employee prompt',
+    ),
+    async (c) => {
+      const input = (await body(
+        c,
+        assistantHttpInputs.replaceAssistantUserPrompt!,
+      )) as { prompt: string };
+      await options
+        .service()
+        .setUserPrompt(options.actor(c), c.req.param('id'), input.prompt);
+      return c.json({ data: { prompt: input.prompt } });
+    },
+  );
+  r.get(
+    '/assistantFiles/:id/preview',
+    security,
+    ...doc(
+      'previewAssistantFile',
+      'Read a retained attachment with uploader or AI settings access',
+    ),
+    async (c) => {
+      const { file, stream } = await options
+        .service()
+        .previewFile(options.actor(c), c.req.param('id'));
+      return new Response(stream, {
+        headers: {
+          'Content-Type': file.mimetype,
+          'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(file.filename)}`,
+          'Content-Security-Policy': "default-src 'none'; sandbox",
+          'X-Content-Type-Options': 'nosniff',
+        },
+      });
+    },
   );
   r.get(
     '/assistantModels',
@@ -208,9 +248,7 @@ export function createAssistantRoutes(options: {
     security,
     ...doc('markAssistantConversationRead', 'Mark a conversation as read'),
     async (c) => {
-      await options
-        .service()
-        .edit(options.actor(c), c.req.param('id'), { read: true });
+      await options.service().markRead(options.actor(c), c.req.param('id'));
       return c.json({ data: {} });
     },
   );

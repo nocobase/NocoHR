@@ -6,7 +6,7 @@ import type {
   UpdateToolCallDecisionOptions,
 } from './types.js';
 
-/** Preserve the legacy reader; new sessions never fall through to an old writer. */
+/** Enabled applications own legacy reads and copied sessions; no retired plugin request is required. */
 export class RuntimeAIService implements AIService {
   private readonly legacy: NocoBaseAIService;
   private readonly application: NocoBaseAIService;
@@ -17,6 +17,10 @@ export class RuntimeAIService implements AIService {
       path
         .replace(/^aiEmployee\/conversations/u, 'assistantConversations')
         .replace(/^aiEmployees\/roster$/u, 'assistantEmployees')
+        .replace(
+          /^aiEmployees\/([^/]+)\/userPrompt$/u,
+          'assistantEmployees/$1/userPrompt',
+        )
         .replace(/^aiEmployee\/models$/u, 'assistantModels')
         .replace(/^aiEmployee\//u, 'unsupportedAssistant/')
         .replace(/^aiEmployees\//u, 'unsupportedAssistant/'),
@@ -30,17 +34,16 @@ export class RuntimeAIService implements AIService {
       })
       .then((value) => value.data.enabled));
   }
-  private async service(id?: string, write = false) {
+  private async service(id?: string) {
     const enabled = await this.isEnabled();
     if (!enabled) {
       if (id?.startsWith('assistant-'))
         throw new Error('ASSISTANT_UNAVAILABLE');
       return this.legacy;
     }
-    if (!id || id.startsWith('assistant-')) return this.application;
-    if (write) throw new Error('LEGACY_CONVERSATION_READ_ONLY');
-    return this.legacy;
+    return this.application;
   }
+
   async listEmployees() {
     return (await this.service()).listEmployees();
   }
@@ -50,53 +53,42 @@ export class RuntimeAIService implements AIService {
   async listConversations(keyword?: string) {
     if (!(await this.isEnabled()))
       return this.legacy.listConversations(keyword);
-    const [current, legacy] = await Promise.all([
-      this.application.listConversations(keyword),
-      this.legacy.listConversations(keyword),
-    ]);
-    return [...current, ...legacy].sort((a, b) =>
-      b.updatedAt.localeCompare(a.updatedAt),
-    );
+    return this.application.listConversations(keyword);
   }
+
   async getConversationMessages(
     id: string,
     options?: { updateRead?: boolean },
   ) {
-    const service = await this.service(id);
-    return service.getConversationMessages(
-      id,
-      (await this.isEnabled()) && !id.startsWith('assistant-')
-        ? { updateRead: false }
-        : options,
-    );
+    return (await this.service(id)).getConversationMessages(id, options);
   }
   async getConversationActiveState(id: string) {
-    if ((await this.isEnabled()) && !id.startsWith('assistant-'))
-      return 'idle' as const;
     return (await this.service(id)).getConversationActiveState(id);
   }
+
   async updateConversationTitle(id: string, title: string) {
-    return (await this.service(id, true)).updateConversationTitle(id, title);
+    return (await this.service(id)).updateConversationTitle(id, title);
   }
   async destroyConversation(id: string) {
-    return (await this.service(id, true)).destroyConversation(id);
+    return (await this.service(id)).destroyConversation(id);
   }
   async createConversation(options: CreateAIConversationOptions) {
     return (await this.service()).createConversation(options);
   }
   async sendMessagesStream(body: unknown, signal?: AbortSignal) {
-    return (await this.service(this.sessionId(body), true)).sendMessagesStream(
+    return (await this.service(this.sessionId(body))).sendMessagesStream(
       body,
       signal,
     );
   }
   async resumeToolCallStream(body: unknown, signal?: AbortSignal) {
-    return (
-      await this.service(this.sessionId(body), true)
-    ).resumeToolCallStream(body, signal);
+    return (await this.service(this.sessionId(body))).resumeToolCallStream(
+      body,
+      signal,
+    );
   }
   async updateToolCallDecision(options: UpdateToolCallDecisionOptions) {
-    return (await this.service(options.sessionId, true)).updateToolCallDecision(
+    return (await this.service(options.sessionId)).updateToolCallDecision(
       options,
     );
   }
@@ -113,8 +105,7 @@ export class RuntimeAIService implements AIService {
     return this.legacy.uploadFile(file, signal);
   }
   async updateEmployeeUserPrompt(username: string, prompt: string) {
-    if (await this.isEnabled()) throw new Error('UNSUPPORTED_CHAT_REQUEST');
-    return this.legacy.updateEmployeeUserPrompt(username, prompt);
+    return (await this.service()).updateEmployeeUserPrompt(username, prompt);
   }
   private sessionId(body: unknown): string {
     if (

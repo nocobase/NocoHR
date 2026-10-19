@@ -125,18 +125,18 @@ export function createAIRunner(container: ServiceContainer): AIRunner {
     async reply(input) {
       if (container.has(assistantConversationsToken)) {
         const service = container.resolve(assistantConversationsToken);
-        const configured = service.models.list()[0];
-        const model = configured?.enabledModels[0];
-        if (!configured || !model)
+        const model = await service.defaultModel(
+          { id: input.userId, roles: [], isRoot: false, locale: 'zh-CN' },
+          input.employee,
+        );
+        if (!model)
           throw new AIUnavailableError('application model not configured');
-        if (input.sessionId && !input.sessionId.startsWith('assistant-'))
-          throw new AIUnavailableError('legacy conversation is read-only');
         return service.text(
           { id: input.userId, roles: [], isRoot: false, locale: 'zh-CN' },
           {
             ...input,
             text: `[Time zone: ${input.timeZone}]\n\n${input.text}`,
-            model: { llmService: configured.llmService, model: model.value },
+            model,
           },
           AbortSignal.timeout(120_000),
         );
@@ -224,12 +224,12 @@ export function createAIRunner(container: ServiceContainer): AIRunner {
     async structured<T>(input: StructuredRunInput<T>) {
       if (container.has(assistantConversationsToken)) {
         const service = container.resolve(assistantConversationsToken);
-        const configured = service.models.list()[0];
-        const model = configured?.enabledModels[0];
-        if (!configured || !model)
+        const model = await service.defaultModel(
+          { id: input.userId, roles: [], isRoot: false, locale: 'zh-CN' },
+          input.employee,
+        );
+        if (!model)
           throw new AIUnavailableError('application model not configured');
-        if (input.sessionId && !input.sessionId.startsWith('assistant-'))
-          throw new AIUnavailableError('legacy conversation is read-only');
         const actor = {
           id: input.userId,
           roles: [],
@@ -249,7 +249,7 @@ export function createAIRunner(container: ServiceContainer): AIRunner {
               text,
               sessionId,
               schema: input.schema,
-              model: { llmService: configured.llmService, model: model.value },
+              model,
             },
             AbortSignal.timeout(input.timeoutMs ?? 120_000),
           );
