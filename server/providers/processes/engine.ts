@@ -17,6 +17,7 @@ export interface ProcessDefinition {
 }
 
 export interface ProcessRun {
+  actorUserId?: string;
   eventKey: string;
   definition: ProcessDefinition;
   input: unknown;
@@ -44,6 +45,7 @@ export interface ProcessStore {
 }
 
 export type ProcessHandler = (context: {
+  actorUserId?: string;
   input: unknown;
   upstream: Readonly<Record<string, unknown>>;
   idempotencyKey: string;
@@ -98,6 +100,7 @@ export class ProcessEngine {
     definition: ProcessDefinition,
     input: unknown,
     eventKey: string,
+    actorUserId?: string,
   ): Promise<ProcessRun> {
     if (!eventKey) throw new Error('PROCESS_EVENT_KEY_REQUIRED');
     if (!definition.enabled) throw new Error('PROCESS_DISABLED');
@@ -108,6 +111,7 @@ export class ProcessEngine {
     const existing = await this.store.find(eventKey);
     if (existing) {
       if (
+        existing.actorUserId !== actorUserId ||
         existing.definition.key !== definition.key ||
         existing.definition.hash !== definition.hash ||
         toolArgumentDigest(existing.input) !== toolArgumentDigest(parsed.data)
@@ -116,6 +120,7 @@ export class ProcessEngine {
       return existing;
     }
     const accepted = await this.store.accept({
+      ...(actorUserId ? { actorUserId } : {}),
       eventKey,
       definition,
       input: parsed.data,
@@ -124,6 +129,7 @@ export class ProcessEngine {
       output: {},
     });
     if (
+      accepted.actorUserId !== actorUserId ||
       accepted.definition.key !== definition.key ||
       accepted.definition.hash !== definition.hash ||
       toolArgumentDigest(accepted.input) !== toolArgumentDigest(parsed.data)
@@ -153,6 +159,7 @@ export class ProcessEngine {
       const handler = this.handlers.get(node.handler);
       if (!handler) throw new Error('PROCESS_HANDLER_NOT_AVAILABLE');
       const result = await handler({
+        ...(run.actorUserId ? { actorUserId: run.actorUserId } : {}),
         input: run.input,
         upstream: run.output,
         idempotencyKey: JSON.stringify([eventKey, node.key]),

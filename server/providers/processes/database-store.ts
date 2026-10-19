@@ -8,6 +8,7 @@ import { capabilityJsonValue } from '../upgrade/json-value.js';
 import type { ProcessDefinition, ProcessRun, ProcessStore } from './engine.js';
 
 const rowSchema = z.object({
+  actorUserId: z.string().nullable().optional(),
   id: z.string(),
   eventKey: z.string(),
   definitionKey: z.string(),
@@ -43,6 +44,7 @@ export class DatabaseProcessStore implements ProcessStore {
       const stamp = new Date();
       await this.connection.repository('processRuns').createOne({
         values: {
+          ...(run.actorUserId ? { actorUserId: run.actorUserId } : {}),
           id: randomUUID(),
           eventKey: run.eventKey,
           definitionKey: run.definition.key,
@@ -85,6 +87,7 @@ export class DatabaseProcessStore implements ProcessStore {
     if (processDefinitionDigest(definition) !== row.definitionDigest)
       throw new Error('PROCESS_ARTIFACT_CHANGED');
     return {
+      ...(row.actorUserId ? { actorUserId: row.actorUserId } : {}),
       eventKey,
       definition,
       input: row.input,

@@ -3,6 +3,7 @@ import {
   type AppConfigFactory,
 } from '@nocobase/app-server/config';
 import auth from './auth.js';
+import processes from './processes.js';
 import authorization from './authorization.js';
 import notification from './notification.js';
 import session from './session.js';
@@ -56,6 +57,7 @@ const defaultConfigs: AppConfigFactory<{
   snowflake: ReturnType<typeof snowflake>;
   ai: ReturnType<typeof ai>;
   assistant: ReturnType<typeof assistant>;
+  processes: ReturnType<typeof processes>;
   workflow: ReturnType<typeof workflow>;
   talent: ReturnType<typeof talent>;
   talentProfile: ReturnType<typeof talentProfile>;
@@ -84,6 +86,7 @@ const defaultConfigs: AppConfigFactory<{
   snowflake,
   ai,
   assistant,
+  processes,
   workflow,
   talent,
   talentProfile,

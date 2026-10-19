@@ -16,6 +16,8 @@ export const UpgradeInventorySchema = z.strictObject({
     missingFiles: count,
     missingSecrets: count,
     unmappedRecords: count,
+    unverifiedToolProfiles: count,
+    autoPolicyDifferences: count,
   }),
   workflows: z.strictObject({
     definitions: count,
@@ -49,6 +51,8 @@ export interface ReplacementCapabilities {
 
 export type PreflightCode =
   | 'INVALID_INVENTORY'
+  | 'UNVERIFIED_AI_TOOL_PROFILES'
+  | 'AI_AUTO_POLICY_DIFFERENCES'
   | 'AI_NOT_VERIFIED'
   | 'WORKFLOW_NOT_VERIFIED'
   | 'EMPLOYEE_NOT_MAPPED'
@@ -97,6 +101,8 @@ export function checkUpgradeReadiness(
   const unmapped = (values: string[], supported: ReadonlySet<string>) =>
     new Set(values.filter((name) => !supported.has(name))).size;
   add('AI_NOT_VERIFIED', replacement.ai.verified ? 0 : 1);
+  add('UNVERIFIED_AI_TOOL_PROFILES', inventory.ai.unverifiedToolProfiles);
+  add('AI_AUTO_POLICY_DIFFERENCES', inventory.ai.autoPolicyDifferences);
   add('WORKFLOW_NOT_VERIFIED', replacement.workflows.verified ? 0 : 1);
   add(
     'EMPLOYEE_NOT_MAPPED',

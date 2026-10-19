@@ -19,6 +19,8 @@ function inventory(): UpgradeInventory {
       missingFiles: 0,
       missingSecrets: 0,
       unmappedRecords: 0,
+      unverifiedToolProfiles: 0,
+      autoPolicyDifferences: 0,
     },
     workflows: {
       definitions: 1,
@@ -52,6 +54,15 @@ function replacement(): ReplacementCapabilities {
 }
 
 describe('capability migration preflight', () => {
+  it('does not treat unchanged ledger records or unmapped automatic policy as verified', () => {
+    const input = inventory();
+    input.ai.unverifiedToolProfiles = 2;
+    input.ai.autoPolicyDifferences = 1;
+    expect(checkUpgradeReadiness(input, replacement()).findings).toEqual([
+      { code: 'UNVERIFIED_AI_TOOL_PROFILES', count: 2 },
+      { code: 'AI_AUTO_POLICY_DIFFERENCES', count: 1 },
+    ]);
+  });
   it('requires validated replacements even when there is no legacy data', () => {
     const capability = replacement();
     capability.ai.verified = false;
@@ -100,6 +111,14 @@ describe('capability migration preflight', () => {
       { ...inventory(), apiKey: 'never-print-this' },
       { ...inventory(), ai: { ...inventory().ai, activeTurns: -1 } },
       { ...inventory(), ai: { ...inventory().ai, missingSecrets: NaN } },
+      {
+        ...inventory(),
+        ai: { ...inventory().ai, unverifiedToolProfiles: undefined },
+      },
+      {
+        ...inventory(),
+        ai: { ...inventory().ai, autoPolicyDifferences: undefined },
+      },
     ]) {
       expect(checkUpgradeReadiness(input, replacement())).toEqual({
         ready: false,

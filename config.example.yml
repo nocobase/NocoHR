@@ -207,3 +207,6 @@ assistant:
   model: ''
   apiKey: '' # Supply APP_ASSISTANT_API_KEY through the deployment secret store.
   baseURL: '' # Optional OpenAI-compatible API base URL; never returned to clients.
+# Application-owned process runtime stays opt-in until capability and history cutover checks pass.
+processes:
+  enabled: false

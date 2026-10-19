@@ -16,6 +16,8 @@ An execution error after a possible business write marks a tool call or process 
 
 `pnpm nocobase app upgrade-preflight --inventory <path>.inventory.json` reads a metadata inventory inside the application directory. It does not connect to a database. The inventory contains capability identifiers and counts, never credentials, messages, workflow inputs or results. Invalid input produces a fixed diagnostic without echoing its contents.
 
+The AI inventory now also requires `unverifiedToolProfiles` and `autoPolicyDifferences` counts. Previously copied profiles that have not been reconciled against their old effective tools and later edits must be counted as unverified, even when the ledger reports `unchanged`. The CUSTOM/default-ASK/autoCall=true mismatch must be counted as an automatic-policy difference until adapted or explicitly resolved; either positive count blocks cutover. Missing counts invalidate the inventory.
+
 The command currently reports the replacement runtimes as unverified even for an empty inventory. A synthetic empty inventory is not evidence that an existing installation has no data. Readiness must be based on an actual installation's metadata, complete capability adapters and integration evidence.
 
 ## Remaining integration
@@ -68,7 +70,7 @@ The isolated target SQLite test traces actual SQL, including database-library me
 
 ### Cutover prerequisites
 
-The foundations are not a complete plugin replacement. Text conversations, message persistence and normal request/confirmation lifecycle now have opt-in entry points. Retained file references, known employee/preferences/model configuration and bounded legacy transcripts have explicit copy paths. New uploads, document parsers beyond bounded text, remaining streaming/page flows, additional providers, installed knowledge/skills/MCP/settings mappings and end-to-end background/Feishu validation remain prerequisites. Workflow definition/version management, parameters, typed source tooling, artifact resources, custom instructions, jobs, scheduler completion and management pages are also pending.
+The foundations are not a complete plugin replacement. Text conversations, message persistence and normal request/confirmation lifecycle now have opt-in entry points. Retained file references, known employee/preferences/model configuration and bounded legacy transcripts have explicit copy paths. New uploads, document parsers beyond bounded text, remaining streaming/page flows, additional providers, installed knowledge/skills/MCP/settings mappings and end-to-end background/Feishu validation remain prerequisites. The bounded process unit now connects validated build artifacts, native Jobs/Scheduler, authorized run APIs and retained terminal history; see [process unit](process-unit.md). Application business definitions and handler bindings, definition/version editing, parameters, custom instructions, complete schedule policy and management pages remain pending.
 
 Historical record mappings require the installed source versions and metadata inventory. Preserve original package namespaces and checksums when retaining migration sources; never re-run their migrations under an application namespace. Drain existing tasks before cutover and require a new user decision for transferred pending tool calls. Unknown capabilities, missing artifacts, missing keys and unexplained historical states prevent switching runtimes.
 
