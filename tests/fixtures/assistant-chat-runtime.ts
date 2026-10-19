@@ -25,6 +25,7 @@ export function createAssistantChatFixture(
     failTool?: boolean;
     autoCalls?: number;
     denyAuto?: boolean;
+    toolResult?: unknown;
   } = {},
 ) {
   const actor = { id: 'synthetic-owner', roles: [], isRoot: false };
@@ -91,6 +92,7 @@ export function createAssistantChatFixture(
     async invoke() {
       counts.invokes++;
       if (options.failTool) throw new Error('SYNTHETIC_WRITE_UNCERTAIN');
+      if (Object.hasOwn(options, 'toolResult')) return options.toolResult;
       return { id: 'synthetic-draft' };
     },
   });
@@ -106,6 +108,7 @@ export function createAssistantChatFixture(
     async invoke() {
       counts.invokes++;
       if (options.failTool) throw new Error('SYNTHETIC_WRITE_UNCERTAIN');
+      if (Object.hasOwn(options, 'toolResult')) return options.toolResult;
       return { value: 42 };
     },
   });
@@ -195,6 +198,7 @@ export function createAssistantChatFixture(
     rows,
     counts,
     store,
+    executor,
     tools,
     modelInputs,
     events,

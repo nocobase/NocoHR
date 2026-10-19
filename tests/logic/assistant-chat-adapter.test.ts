@@ -212,6 +212,78 @@ describe('existing chat page protocol adapter', () => {
     });
   });
 
+  it.each([false, true])(
+    'shows business failure as an error with manual confirmation = %s',
+    async (manual) => {
+      const result = {
+        status: 'error',
+        content: {
+          code: 'REQUISITION_NOT_FOUND',
+          details: 'Synthetic private detail',
+        },
+        stack: 'Synthetic private stack',
+      };
+      const f = createAssistantChatFixture({
+        calls: manual ? 1 : 0,
+        autoCalls: manual ? 0 : 1,
+        toolResult: result,
+      });
+      await f.send();
+      if (manual) {
+        await f.decide();
+        await f.resume();
+        await expect(f.decide()).rejects.toThrow('TOOL_CALL_ALREADY_DECIDED');
+      }
+      const row = [...f.rows.values()][0];
+      expect(row).toMatchObject({ status: 'completed', result });
+      await expect(
+        f.executor.decide(f.actor, {
+          id: row.id,
+          sessionId: row.sessionId,
+          digest: row.argumentDigest,
+          decision: 'approve',
+        }),
+      ).rejects.toThrow('TOOL_CALL_ALREADY_DECIDED');
+      expect(f.counts.invokes).toBe(1);
+      const chunks = await decodeEvents(f.events);
+      expect(chunks).toContainEqual(
+        expect.objectContaining({
+          type: 'tool-output-error',
+          toolCallId: row.modelCallId,
+          errorText: '{"code":"REQUISITION_NOT_FOUND"}',
+        }),
+      );
+      expect(
+        chunks.some((chunk) => chunk.type === 'tool-output-available'),
+      ).toBe(false);
+      expect(JSON.stringify(chunks)).not.toContain('Synthetic private');
+      expect(f.modelInputs[1].at(-1)?.content).toBe(JSON.stringify(result));
+    },
+  );
+
+  it.each([
+    null,
+    'Uncontrolled error text',
+    { code: 'bad code with private text' },
+  ])(
+    'uses a fixed error for malformed business failure content',
+    async (content) => {
+      const f = createAssistantChatFixture({
+        calls: 0,
+        autoCalls: 1,
+        toolResult: { status: 'error', content },
+      });
+      await f.send();
+      expect(await decodeEvents(f.events)).toContainEqual(
+        expect.objectContaining({
+          type: 'tool-output-error',
+          errorText: '{"code":"TOOL_BUSINESS_ERROR"}',
+        }),
+      );
+      expect([...f.rows.values()][0].status).toBe('completed');
+    },
+  );
+
   it('keeps automatic, approved and rejected results distinct in a mixed group', async () => {
     const f = createAssistantChatFixture({ calls: 2, autoCalls: 1 });
     await f.send();
@@ -256,6 +328,25 @@ describe('existing chat page protocol adapter', () => {
       '{"code":"TOOL_REJECTED"}',
     ]);
     expect(f.counts.invokes).toBe(2);
+  });
+
+  it('preserves structured successful output even when its data contains an error status', async () => {
+    const result = {
+      status: 'success',
+      content: { status: 'error', code: 'NESTED_DATA' },
+    };
+    const f = createAssistantChatFixture({
+      calls: 0,
+      autoCalls: 1,
+      toolResult: result,
+    });
+    await f.send();
+    expect(await decodeEvents(f.events)).toContainEqual(
+      expect.objectContaining({
+        type: 'tool-output-available',
+        output: result,
+      }),
+    );
   });
 
   it('shows forbidden or uncertain automatic calls without reporting success or replaying them', async () => {

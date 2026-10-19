@@ -84,3 +84,74 @@ it.each([
     ).toThrow('UNSUPPORTED_PROCESS_INPUT_SCHEMA');
   },
 );
+
+it.each([
+  z
+    .number()
+    .refine((n) => n > 0)
+    .pipe(z.number()),
+  z.number().pipe(z.number().refine((n) => n > 0)),
+  z.number().pipe(z.number()),
+  z.coerce.number(),
+  z.coerce.boolean(),
+  z.coerce.string(),
+  z.number().catch(0),
+  z.number().prefault(0),
+])(
+  'rejects source-only composition both directly and inside JSON structures',
+  (inputSchema) => {
+    for (const schema of [
+      inputSchema,
+      z.strictObject({ value: inputSchema }),
+      z.array(inputSchema),
+      z.union([z.null(), inputSchema]),
+      z.record(z.string(), inputSchema),
+    ]) {
+      expect(() =>
+        compileProcessArtifact({ ...source, inputSchema: schema }, handlers),
+      ).toThrow('UNSUPPORTED_PROCESS_INPUT_SCHEMA');
+    }
+  },
+);
+
+const standardInputs: [z.ZodType, unknown, unknown][] = [
+  [z.number().int().min(1).max(10), 3, 1.5],
+  [z.enum(['a', 'b']), 'a', 'c'],
+  [z.array(z.string().min(2)).nullable(), ['ab'], ['a']],
+  [z.record(z.string(), z.number().min(0)), { a: 1 }, { a: -1 }],
+  [z.tuple([z.string(), z.number()]), ['a', 1], ['a', '1']],
+  [z.union([z.string().min(2), z.number().min(1)]), 'ab', 0],
+  [z.number().default(2), undefined, 'bad'],
+  [z.strictObject({ n: z.number().optional() }), {}, { n: 'bad' }],
+  [z.looseObject({ n: z.number() }), { n: 1, extra: true }, { n: 'bad' }],
+];
+it.each(standardInputs)(
+  'preserves supported standard input parsing through compilation and JSON',
+  (inputSchema, good, bad) => {
+    const restored = loadProcessArtifact(
+      JSON.parse(
+        JSON.stringify(
+          compileProcessArtifact({ ...source, inputSchema }, handlers),
+        ),
+      ),
+      handlers,
+    );
+    expect(restored.inputSchema.parse(good)).toEqual(inputSchema.parse(good));
+    expect(restored.inputSchema.safeParse(bad).success).toBe(false);
+  },
+);
+
+it.each([
+  z.object({ n: z.number() }),
+  z.record(z.enum(['a', 'b']), z.number()),
+  z.number().optional(),
+  z.string().regex(/^a$/iu),
+  z.unknown().default(new Date('2026-01-01T00:00:00Z')),
+])(
+  'refuses structural semantics that the supported JSON contract cannot retain',
+  (inputSchema) => {
+    expect(() =>
+      compileProcessArtifact({ ...source, inputSchema }, handlers),
+    ).toThrow('UNSUPPORTED_PROCESS_INPUT_SCHEMA');
+  },
+);

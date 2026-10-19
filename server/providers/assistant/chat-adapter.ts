@@ -52,6 +52,13 @@ const resumeRequest = z.strictObject({
   model,
   toolCallResults: z.array(z.never()).max(0),
 });
+const businessFailure = z.object({
+  status: z.literal('error'),
+  content: z.unknown().optional(),
+});
+const businessErrorCode = z.object({
+  code: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/u),
+});
 
 /** Loaded by the authenticated conversation service, never deserialized from a request body. */
 export interface AssistantChatSession {
@@ -327,6 +334,19 @@ export class AssistantChatAdapter {
 
   private async emitToolEvent(event: AssistantToolEvent, emit: Emit) {
     const { call, status } = event;
+    const failure =
+      status === 'completed'
+        ? businessFailure.safeParse(event.result)
+        : undefined;
+    const failed = failure?.success === true;
+    const success = status === 'completed' && !failed;
+    const code = failure?.success
+      ? businessErrorCode.safeParse(failure.data.content)
+      : undefined;
+    // A completed execution can have failed in the business domain. Never expose arbitrary details or change its durable state.
+    const result = failed
+      ? { code: code?.success ? code.data.code : 'TOOL_BUSINESS_ERROR' }
+      : event.result;
     const toolCall = {
       id: call.modelCallId!,
       name: call.tool,
@@ -339,7 +359,7 @@ export class AssistantChatAdapter {
           ? 'interrupted'
           : status === 'executing'
             ? 'running'
-            : status === 'completed'
+            : success
               ? 'success'
               : 'error',
     };
@@ -353,17 +373,15 @@ export class AssistantChatAdapter {
         type: 'tool_call_status',
         body: {
           toolCall,
-          status:
-            status === 'completed'
-              ? 'confirmed'
-              : status === 'rejected'
-                ? 'rejected'
-                : 'error',
+          status: success
+            ? 'confirmed'
+            : status === 'rejected'
+              ? 'rejected'
+              : 'error',
           // The existing page decoder reads error content as text, successful output as JSON.
-          content:
-            status === 'completed'
-              ? capabilityJsonValue(event.result)
-              : JSON.stringify(capabilityJsonValue(event.result)),
+          content: success
+            ? capabilityJsonValue(result)
+            : JSON.stringify(capabilityJsonValue(result)),
         },
       });
   }
