@@ -262,3 +262,5 @@ Comparison: recovered `.54` source to the published `.70` package. Each row reco
 ## Application-owned client additions
 
 The [client unit](client-unit.md) also retains the API-key and Database Explorer views from the pinned official legacy source using public target clients, adds the role-assignment editor and a shared closed device gate, and pins application grants and component behavior in tests. These application-owned additions are outside the template release diff above. Business page sources and historical migrations are unchanged. Entries still marked deferred remain unfinished; this table is not a completion marker.
+
+The [authorization inspector continuation](authorization-inspector.md) restores the original inspector as application-owned presentation with native Client 3 services and corrects role revocation to use the assign permission. It changes no template completion marker, migration or dependency declaration.
