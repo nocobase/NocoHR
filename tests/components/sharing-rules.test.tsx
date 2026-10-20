@@ -43,6 +43,16 @@ const options: AuthorizationOptionsResponse = {
               ],
             },
             {
+              type: 'database.collection',
+              id: 'departments',
+              title: 'Departments',
+              group: 'hr',
+              actions: [
+                { name: 'read', title: 'Read' },
+                { name: 'update', title: 'Update' },
+              ],
+            },
+            {
               type: 'composite',
               id: 'employee.handover',
               title: 'Employee handover workflow',
@@ -84,7 +94,10 @@ const options: AuthorizationOptionsResponse = {
       collections: ['employees'],
     },
   ],
-  collections: [{ name: 'employees', fields: ['id', 'name'] }],
+  collections: [
+    { name: 'employees', fields: ['id', 'name'] },
+    { name: 'departments', fields: ['id', 'name'] },
+  ],
 };
 
 const initialRule: SharingRule = {
@@ -131,6 +144,7 @@ async function mount({
   failPatch = false,
   revokeOnPatch = false,
   holdUserSubjects = false,
+  holdRecordPage,
 }: {
   route?: string;
   permissions?: readonly string[];
@@ -139,8 +153,10 @@ async function mount({
   failPatch?: boolean;
   revokeOnPatch?: boolean;
   holdUserSubjects?: boolean;
+  holdRecordPage?: { readonly collection: string; readonly page: number };
 } = {}) {
   const heldSubjects = deferred<unknown>();
+  const heldRecords = deferred<unknown>();
   let currentPermissions = [...permissions];
   let rules: SharingRule[] = [...(initialRules ?? [initialRule])];
   let listCalls = 0;
@@ -233,11 +249,32 @@ async function mount({
           meta: { page: 1, pageSize: 20, total: 1 },
         };
       }
-      if (call.path.startsWith('authorization/sharingRules/records/'))
+      if (call.path.startsWith('authorization/sharingRules/records/')) {
+        const collection = decodeURIComponent(call.path.split('/').at(-1)!);
+        const page = Number(call.query?.page ?? 1);
+        if (
+          holdRecordPage?.collection === collection &&
+          holdRecordPage.page === page
+        )
+          return heldRecords.promise;
+        const items =
+          collection === 'departments'
+            ? [{ id: 'department-1', label: 'Finance Department' }]
+            : page === 2
+              ? [
+                  { id: 'employee-22', label: 'Page Two Employee' },
+                  { id: 'employee-23', label: 'Next Page Employee' },
+                ]
+              : [{ id: 'employee-2', label: 'Bob Employee' }];
         return {
-          data: [{ id: 'employee-2', label: 'Bob Employee' }],
-          meta: { page: 1, pageSize: 20, total: 1 },
+          data: items,
+          meta: {
+            page,
+            pageSize: 20,
+            total: collection === 'departments' ? 1 : 22,
+          },
         };
+      }
       throw new Error(
         `Unexpected sharing-rules request: ${call.method} ${call.path}`,
       );
@@ -276,6 +313,7 @@ async function mount({
     calls,
     rendered,
     heldSubjects,
+    heldRecords,
     setPermissions(next: readonly string[]) {
       currentPermissions = [...next];
       client.invalidate();
@@ -562,6 +600,183 @@ it('keeps other composite data scopes when editing one record selection', async 
       },
     ],
   });
+});
+
+it('keeps page two while selecting and removing records without refetching it', async () => {
+  const user = userEvent.setup();
+  const { calls } = await mount({
+    route: '/settings/authorization/sharing-rules/edit/employee-handover',
+  });
+  await screen.findByRole('checkbox', { name: 'Bob Employee' });
+  const action = screen.getByTestId('sharing-action-0');
+
+  await user.click(within(action).getByRole('button', { name: /next/i }));
+  const pageTwoRecord = await screen.findByRole('checkbox', {
+    name: 'Page Two Employee',
+  });
+  const nextPageRecord = screen.getByRole('checkbox', {
+    name: 'Next Page Employee',
+  });
+
+  await user.click(pageTwoRecord);
+  expect(
+    screen.getByRole('checkbox', { name: 'Page Two Employee' }),
+  ).toBeChecked();
+  expect(
+    screen.getByRole('button', { name: 'Remove record employee-1' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Remove record employee-22' }),
+  ).toBeTruthy();
+  expect(screen.getByText('Page 2 of 2')).toBeTruthy();
+
+  await user.click(nextPageRecord);
+  expect(
+    screen.getByRole('checkbox', { name: 'Next Page Employee' }),
+  ).toBeChecked();
+  expect(
+    screen.getByRole('button', { name: 'Remove record employee-23' }),
+  ).toBeTruthy();
+  expect(screen.getByText('Page 2 of 2')).toBeTruthy();
+
+  await user.click(pageTwoRecord);
+  expect(
+    screen.getByRole('checkbox', { name: 'Page Two Employee' }),
+  ).not.toBeChecked();
+  expect(
+    screen.getByRole('checkbox', { name: 'Next Page Employee' }),
+  ).toBeChecked();
+  expect(
+    screen.queryByRole('button', { name: 'Remove record employee-22' }),
+  ).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'Remove record employee-1' }),
+  ).toBeTruthy();
+  expect(screen.getByText('Page 2 of 2')).toBeTruthy();
+
+  const recordRequests = calls.mock.calls
+    .map(([call]) => call)
+    .filter((call) =>
+      call.path.startsWith('authorization/sharingRules/records/'),
+    );
+  expect(recordRequests.map((call) => call.query?.page)).toEqual(['1', '2']);
+});
+
+it('resets the picker when the action changes', async () => {
+  const user = userEvent.setup();
+  const { calls } = await mount({
+    route: '/settings/authorization/sharing-rules/edit/employee-handover',
+  });
+  await screen.findByRole('checkbox', { name: 'Bob Employee' });
+  let action = screen.getByTestId('sharing-action-0');
+  await user.click(within(action).getByRole('button', { name: /next/i }));
+  await screen.findByRole('checkbox', { name: 'Page Two Employee' });
+
+  await user.click(
+    within(action).getByRole('button', { name: 'Remove this action' }),
+  );
+  await user.click(
+    screen.getByRole('combobox', { name: 'Choose an action and data scope' }),
+  );
+  await user.click(await screen.findByRole('option', { name: 'Update' }));
+  await user.click(
+    screen.getByRole('button', { name: 'Add action and scope' }),
+  );
+
+  action = screen.getByTestId('sharing-action-0');
+  expect(
+    await within(action).findByRole('checkbox', { name: 'Bob Employee' }),
+  ).toBeTruthy();
+  expect(
+    within(action).queryByRole('checkbox', { name: 'Page Two Employee' }),
+  ).toBeNull();
+  expect(within(action).getByText('Page 1 of 2')).toBeTruthy();
+  const recordRequests = calls.mock.calls
+    .map(([call]) => call)
+    .filter((call) =>
+      call.path.startsWith('authorization/sharingRules/records/'),
+    );
+  expect(recordRequests.map((call) => call.query?.page)).toEqual([
+    '1',
+    '2',
+    '1',
+  ]);
+});
+
+it('discards a late record response after changing resources', async () => {
+  const user = userEvent.setup();
+  const { calls, heldRecords } = await mount({
+    route: '/settings/authorization/sharing-rules/edit/employee-handover',
+    holdRecordPage: { collection: 'employees', page: 2 },
+  });
+  await screen.findByRole('checkbox', { name: 'Bob Employee' });
+  const action = screen.getByTestId('sharing-action-0');
+  await user.click(within(action).getByRole('button', { name: /next/i }));
+  await waitFor(() =>
+    expect(
+      calls.mock.calls.some(
+        ([call]) =>
+          call.path.endsWith('/employees') && call.query?.page === '2',
+      ),
+    ).toBe(true),
+  );
+
+  await user.click(screen.getByRole('combobox', { name: 'Resource' }));
+  await user.click(
+    await screen.findByRole('option', {
+      name: /Departments · database\.collection:departments/,
+    }),
+  );
+  await user.click(
+    await screen.findByRole('button', {
+      name: 'Change resource and clear actions',
+    }),
+  );
+  await user.click(
+    screen.getByRole('combobox', { name: 'Choose an action and data scope' }),
+  );
+  await user.click(await screen.findByRole('option', { name: 'Read' }));
+  await user.click(
+    screen.getByRole('button', { name: 'Add action and scope' }),
+  );
+  expect(
+    await screen.findByRole('checkbox', { name: 'Finance Department' }),
+  ).toBeTruthy();
+
+  await act(async () => {
+    heldRecords.resolve({
+      data: [{ id: 'employee-22', label: 'Late Employee Result' }],
+      meta: { page: 2, pageSize: 20, total: 22 },
+    });
+  });
+
+  expect(
+    screen.getByRole('checkbox', { name: 'Finance Department' }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('checkbox', { name: 'Late Employee Result' }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Remove record employee-1' }),
+  ).toBeNull();
+  expect(
+    within(screen.getByTestId('sharing-action-0')).getByText('Page 1 of 1'),
+  ).toBeTruthy();
+  const recordRequests = calls.mock.calls
+    .map(([call]) => call)
+    .filter((call) =>
+      call.path.startsWith('authorization/sharingRules/records/'),
+    );
+  expect(
+    recordRequests.map((call) => [
+      call.path.split('/').at(-1),
+      call.query?.page,
+    ]),
+  ).toEqual([
+    ['employees', '1'],
+    ['employees', '2'],
+    ['departments', '1'],
+  ]);
 });
 
 it('keeps the form draft and hides backend details after a save validation failure', async () => {

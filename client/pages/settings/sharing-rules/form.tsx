@@ -63,7 +63,6 @@ import {
   sameValue,
   SHARING_RULES_SETTINGS,
   sharingRuleName,
-  stableValue,
   subjectIdentity,
   type AuthorizationOptionsResponse as OptionsResponse,
   type AuthorizationSubject,
@@ -1130,7 +1129,12 @@ function ActionEditor({
     <div className='space-y-4'>
       {actions.map((action, index) => (
         <ActionSelectionEditor
-          key={`${action.action}:${action.scopeKey ?? ''}:${stableValue(action.selection)}`}
+          key={JSON.stringify([
+            resource?.type ?? '',
+            resource?.id ?? '',
+            action.action,
+            action.scopeKey ?? '',
+          ])}
           index={index}
           action={action}
           target={
