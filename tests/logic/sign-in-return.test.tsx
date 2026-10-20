@@ -1,4 +1,9 @@
 import {
+  TestI18nProvider,
+  createTestI18nRuntime,
+} from '@nocobase/i18n/testing';
+import enUS from '../../client/locales/en-US.js';
+import {
   apiClientToken,
   ClientApplicationContext,
   type ClientApplication,
@@ -26,6 +31,11 @@ import {
   toSafeReturnPath,
 } from '../../client/routing/sign-in-return.ts';
 import { AppThemeProvider } from '../../client/theme/index.ts';
+
+const translations = await createTestI18nRuntime({
+  application: { namespace: '@nocobase/app-template-default', resources: enUS },
+  strict: false,
+});
 
 const DEEP_LINK = '/talent/actions/new?type=regularize&employeeId=emp-sunli';
 
@@ -92,6 +102,24 @@ describe('signing in from a deep link', () => {
     }));
   });
 
+  it.each([
+    '/settings/users',
+    '/settings/api-keys',
+    '/settings/authorization/permission-sets/edit/operators',
+  ])(
+    'keeps direct and refreshed signed-in management links: %s',
+    async (path) => {
+      const link = path + '?view=permissions';
+      const initial = renderApplication(link, true);
+      expect(await screen.findByText('Action form')).toBeVisible();
+      expect(screen.getByTestId('location')).toHaveTextContent(link);
+      initial.unmount();
+      renderApplication(link, true);
+      expect(await screen.findByText('Action form')).toBeVisible();
+      expect(screen.getByTestId('location')).toHaveTextContent(link);
+    },
+  );
+
   it('carries the requested page to /login and returns there after sign-in', async () => {
     const auth = renderApplication(DEEP_LINK);
 
@@ -134,13 +162,16 @@ describe('signing in from a deep link', () => {
   });
 });
 
-function renderApplication(initialEntry: string): { signIn: () => void } {
-  let signedIn = false;
+function renderApplication(
+  initialEntry: string,
+  initiallySignedIn = false,
+): { signIn: () => void; unmount: () => void } {
+  let signedIn = initiallySignedIn;
   const authClient = {
     getSession: vi.fn(async () => ({
       data: signedIn
         ? {
-            session: null,
+            session: { id: 'fixture-session' },
             user: {
               email: 'alice@example.com',
               id: '1',
@@ -172,7 +203,7 @@ function renderApplication(initialEntry: string): { signIn: () => void } {
   ]);
   const app = {
     config: createAppClientConfig({ rawConfig: {} }),
-    runtime: { settingsRouteTree: [] },
+    runtime: { routes: [] },
     services: {
       has: (token: unknown) => registered.has(token),
       resolve: (token: unknown) => {
@@ -182,34 +213,47 @@ function renderApplication(initialEntry: string): { signIn: () => void } {
     },
   } as unknown as ClientApplication;
 
-  render(
-    <ClientApplicationContext.Provider value={app}>
-      <AuthenticationProvider>
-        <MemoryRouter initialEntries={[initialEntry]}>
-          <AppThemeProvider>
-            <AppRouter
-              clientRoutes={[
-                createRoute('home', '/', 'required', HomePage),
-                createRoute(
-                  'talent-actions-new',
-                  '/talent/actions/new',
-                  'required',
-                  ActionPage,
-                ),
-                createRoute('login', '/login', 'guest', LoginPage),
-                createRoute('register', '/register', 'guest', RegisterPage),
-              ]}
-              devRouteTree={[]}
-              settingsRouteTree={[]}
-            />
-          </AppThemeProvider>
-          <LocationProbe />
-        </MemoryRouter>
-      </AuthenticationProvider>
-    </ClientApplicationContext.Provider>,
+  const rendered = render(
+    <TestI18nProvider runtime={translations}>
+      <ClientApplicationContext.Provider value={app}>
+        <AuthenticationProvider>
+          <MemoryRouter initialEntries={[initialEntry]}>
+            <AppThemeProvider>
+              <AppRouter
+                clientRoutes={[
+                  createRoute('home', '/', 'required', HomePage),
+                  ...[
+                    '/settings/users',
+                    '/settings/api-keys',
+                    '/settings/authorization/permission-sets/edit/operators',
+                  ].map((path) =>
+                    createRoute(
+                      path.replaceAll('/', '-'),
+                      path,
+                      'required',
+                      ActionPage,
+                    ),
+                  ),
+                  createRoute(
+                    'talent-actions-new',
+                    '/talent/actions/new',
+                    'required',
+                    ActionPage,
+                  ),
+                  createRoute('login', '/login', 'guest', LoginPage),
+                  createRoute('register', '/register', 'guest', RegisterPage),
+                ]}
+              />
+            </AppThemeProvider>
+            <LocationProbe />
+          </MemoryRouter>
+        </AuthenticationProvider>
+      </ClientApplicationContext.Provider>
+    </TestI18nProvider>,
   );
 
   return {
+    unmount: rendered.unmount,
     signIn: () => {
       signedIn = true;
     },

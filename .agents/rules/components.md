@@ -36,3 +36,5 @@ The default brand palette and density live in `client/theme/themes/*.css`; share
 ## Standard process management
 
 The template includes `FlowDiagram`, `LifecycleDiagram` and `client/extensions/nocobase-workflow-management/` source. Reuse them when business workflows are introduced; preinstallation does not register a settings route or sample process. `LifecycleDiagram.configuration` automatically offers configuration for authorized native parameter bindings, using the application’s real parameter editor and API. Read [Lifecycle UI](../skills/nocobase-app-development/references/lifecycle-ui.md) before wiring the workflow directory, definition and execution pages. Preserve the standard visuals unless the user explicitly asks to customize them. UI Library names are shadcn registry items, not npm package names; an npm 404 is not evidence that a component is unavailable.
+
+NocoHR keeps the original flat `@/components/data-table` facade for business pages. New system management pages use the target directory implementation through `#components/data-table`; do not redirect existing business imports without a separate consumer verification.

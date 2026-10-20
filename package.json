@@ -129,7 +129,8 @@
     ".mcp.json",
     ".cursor/mcp.json",
     ".vscode/mcp.json",
-    ".agents/rules"
+    ".agents/rules",
+    "shared/"
   ],
   "browserslist": {
     "production": [
@@ -215,6 +216,6 @@
     "#lib/*": "./client/lib/*.js",
     "#extensions/*": "./client/extensions/*.js",
     "#pages/*": "./client/pages/*.js",
-    "#components/data-table": "./client/components/data-table.js"
+    "#components/data-table": "./client/components/data-table/index.js"
   }
 }

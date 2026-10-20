@@ -1,9 +1,7 @@
-import type {
-  AppClientRegisteredRoute,
-  AppClientRegisteredSetting,
-  AppClientRegisteredSettingGroup,
-  AppClientSettingIcon,
-} from '@nocobase/app-client/plugins';
+import { I18nRuntime } from '@nocobase/i18n';
+import { I18nProvider } from '@nocobase/i18n/client';
+import appLocales from '../../client/locales/index.js';
+import type { AppClientRegisteredRoute } from '@nocobase/app-client/plugins';
 import {
   apiClientToken,
   ClientApplicationContext,
@@ -22,9 +20,48 @@ import type { ReactElement } from 'react';
 import { MemoryRouter, Outlet, useParams } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AppRouter } from '../../client/routing/app-router.tsx';
+import { AppRouter as UnifiedAppRouter } from '../../client/routing/app-router.tsx';
 import { HeaderActions } from '../../client/layouts/components/header-actions.tsx';
 import { AppThemeProvider } from '../../client/theme/index.ts';
+
+type SettingIconFixture = import('react').ComponentType<{ className?: string }>;
+interface SettingFixture {
+  id: string;
+  path: string;
+  title: string;
+  packageName: string;
+  source: 'plugin' | 'application';
+  surface: 'settings' | 'dev';
+  authz: AppClientRegisteredRoute['authz'];
+  pageLoader: NonNullable<AppClientRegisteredRoute['componentLoader']>;
+  groupId?: string;
+  icon?: SettingIconFixture;
+  navigation?: boolean;
+}
+interface SettingGroupFixture {
+  id: string;
+  title: string;
+  packageName: string;
+  source: 'plugin' | 'application';
+  settings: readonly SettingFixture[];
+  icon?: SettingIconFixture;
+  surface?: 'settings';
+}
+function AppRouter({
+  clientRoutes,
+  settingsRouteTree = [],
+  devRouteTree = [],
+}: {
+  clientRoutes: readonly AppClientRegisteredRoute[];
+  settingsRouteTree?: readonly AppClientRegisteredRoute[];
+  devRouteTree?: readonly AppClientRegisteredRoute[];
+}) {
+  return (
+    <UnifiedAppRouter
+      clientRoutes={[...clientRoutes, ...settingsRouteTree, ...devRouteTree]}
+    />
+  );
+}
 
 function WorkflowDetailTestPage(): ReactElement {
   return <h2>Workflow detail {useParams().workflowId}</h2>;
@@ -34,8 +71,16 @@ function WorkflowDetailTestPage(): ReactElement {
 // a loaded CI runner. A page that never renders still fails, well inside the 30-second test timeout.
 const ROUTE_LOAD_TIMEOUT = { timeout: 10_000 };
 
+let translations: I18nRuntime;
 describe('settings centre', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    translations = new I18nRuntime({
+      defaultLocale: 'en-US',
+      locales: ['en-US', 'zh-CN'],
+      applicationNamespace: 'test',
+    });
+    translations.registerApplicationNamespace('test', appLocales);
+    await translations.init('en-US');
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       addEventListener: vi.fn(),
       addListener: vi.fn(),
@@ -150,7 +195,7 @@ describe('settings centre', () => {
   });
 
   it('hides the Settings entry in dev tools when no settings are registered', async () => {
-    const devRoute: AppClientRegisteredSetting = {
+    const devRoute: SettingFixture = {
       id: 'playground',
       authz: 'skip',
       navigation: true,
@@ -241,7 +286,11 @@ describe('settings centre', () => {
     const loader = vi.fn(async () => ({ default: () => <h3>App overlay</h3> }));
     renderSettings(
       '/settings/overlay',
-      { can: async ({ resource }) => resource.id !== 'overlay' },
+      {
+        can: async (requirement) =>
+          typeof requirement !== 'string' &&
+          requirement.resource.id !== 'overlay',
+      },
       [],
       [],
       [
@@ -434,7 +483,11 @@ describe('settings centre', () => {
     };
     renderSettings(
       '/settings/parent/child',
-      { can: async ({ resource }) => resource.id !== 'secret' },
+      {
+        can: async (requirement) =>
+          typeof requirement !== 'string' &&
+          requirement.resource.id !== 'secret',
+      },
       [],
       [],
       [],
@@ -483,10 +536,11 @@ describe('settings centre', () => {
 
   it('drops a group whose every page the user is denied', async () => {
     renderSettings('/settings', {
-      can: async ({ resource }) =>
+      can: async (requirement) =>
+        typeof requirement !== 'string' &&
         !(
-          resource.type === 'settings' &&
-          resource.id.startsWith('authorization.')
+          requirement.resource.type === 'settings' &&
+          requirement.resource.id.startsWith('authorization.')
         ),
     });
 
@@ -520,8 +574,9 @@ describe('settings centre', () => {
 
   it('hides a setting the authorization client denies, and does not land on it', async () => {
     renderSettings('/settings/authorization/permission-sets', {
-      can: async ({ resource }) =>
-        resource.id !== 'authorization.permission-sets',
+      can: async (requirement) =>
+        typeof requirement !== 'string' &&
+        requirement.resource.id !== 'authorization.permission-sets',
     });
 
     // The denied setting is neither reachable directly nor listed, so the redirect falls through to the next one.
@@ -533,8 +588,9 @@ describe('settings centre', () => {
 
   it('treats a client that throws as a denial', async () => {
     renderSettings('/settings/authorization/permission-sets', {
-      can: async ({ resource }) => {
-        if (resource.id === 'authorization.permission-sets') {
+      can: async (requirement) => {
+        if (typeof requirement === 'string') return false;
+        if (requirement.resource.id === 'authorization.permission-sets') {
           throw new Error('provider unavailable');
         }
         return true;
@@ -592,7 +648,7 @@ describe('settings centre', () => {
     const first = createSetting('a', 'A', 'g1');
     const second = createSetting('b', 'B');
     const third = createSetting('c', 'C', 'g1');
-    const group: AppClientRegisteredSettingGroup = {
+    const group: SettingGroupFixture = {
       id: 'g1',
       packageName: '@nocobase/app-plugin-test',
       settings: [first, third],
@@ -621,11 +677,11 @@ describe('settings centre', () => {
   });
 });
 
-const ICON: AppClientSettingIcon = ({ className }) => (
+const ICON: SettingIconFixture = ({ className }) => (
   <svg className={className} data-testid='setting-icon' />
 );
 
-const AUTHORIZATION: AppClientRegisteredSettingGroup = {
+const AUTHORIZATION: SettingGroupFixture = {
   icon: ICON,
   id: 'authorization',
   packageName: '@nocobase/app-plugin-test',
@@ -650,18 +706,18 @@ const AUTHORIZATION: AppClientRegisteredSettingGroup = {
 };
 
 // A group's pages are also in the flat list; that is what the router mounts.
-const SETTINGS: readonly AppClientRegisteredSetting[] = [
+const SETTINGS: readonly SettingFixture[] = [
   ...AUTHORIZATION.settings,
   createSetting('workflow', 'Workflow General'),
 ];
 
-const GROUPS: readonly AppClientRegisteredSettingGroup[] = [AUTHORIZATION];
+const GROUPS: readonly SettingGroupFixture[] = [AUTHORIZATION];
 
 function renderSettings(
   initialEntry: string,
   authorization?: Pick<AuthorizationClient, 'can'>,
-  settings: readonly AppClientRegisteredSetting[] = SETTINGS,
-  groups: readonly AppClientRegisteredSettingGroup[] = GROUPS,
+  settings: readonly SettingFixture[] = SETTINGS,
+  groups: readonly SettingGroupFixture[] = GROUPS,
   routes: readonly AppClientRegisteredRoute[] = [],
   tree?: readonly AppClientRegisteredRoute[],
 ): void {
@@ -703,7 +759,7 @@ function renderWithAuthentication(
   const authClient = {
     getSession: vi.fn().mockResolvedValue({
       data: {
-        session: null,
+        session: { id: 'fixture-session' },
         user: {
           email: 'alice@example.com',
           id: '1',
@@ -727,7 +783,7 @@ function renderWithAuthentication(
     [authorizationClientToken, authorizationClient],
   ]);
   const app = {
-    runtime: { settingsRouteTree },
+    runtime: { routes: settingsRouteTree },
     services: {
       has: (token: unknown) => registered.has(token),
       resolve: (token: unknown) => {
@@ -738,9 +794,11 @@ function renderWithAuthentication(
   } as unknown as ClientApplication;
 
   render(
-    <ClientApplicationContext.Provider value={app}>
-      <AuthenticationProvider>{element}</AuthenticationProvider>
-    </ClientApplicationContext.Provider>,
+    <I18nProvider runtime={translations}>
+      <ClientApplicationContext.Provider value={app}>
+        <AuthenticationProvider>{element}</AuthenticationProvider>
+      </ClientApplicationContext.Provider>
+    </I18nProvider>,
   );
 }
 
@@ -749,8 +807,8 @@ function createSetting(
   title: string,
   groupId?: string,
   accessResource?: string,
-  icon?: AppClientSettingIcon,
-): AppClientRegisteredSetting {
+  icon?: SettingIconFixture,
+): SettingFixture {
   return {
     ...(accessResource === undefined
       ? { authz: 'skip' as const }
@@ -776,12 +834,10 @@ function createSetting(
 }
 
 function toRouteTree(
-  settings: readonly AppClientRegisteredSetting[],
-  groups: readonly AppClientRegisteredSettingGroup[],
+  settings: readonly SettingFixture[],
+  groups: readonly SettingGroupFixture[],
 ): AppClientRegisteredRoute[] {
-  const page = (
-    setting: AppClientRegisteredSetting,
-  ): AppClientRegisteredRoute => ({
+  const page = (setting: SettingFixture): AppClientRegisteredRoute => ({
     id: setting.id,
     name: setting.id,
     path: setting.path,
@@ -816,12 +872,12 @@ function toRouteTree(
 }
 
 type SurfaceNavEntry =
-  | { kind: 'group'; group: AppClientRegisteredSettingGroup }
-  | { kind: 'page'; setting: AppClientRegisteredSetting };
+  | { kind: 'group'; group: SettingGroupFixture }
+  | { kind: 'page'; setting: SettingFixture };
 
 export function buildNavEntries(
-  visible: readonly AppClientRegisteredSetting[],
-  groups: readonly AppClientRegisteredSettingGroup[],
+  visible: readonly SettingFixture[],
+  groups: readonly SettingGroupFixture[],
 ): readonly SurfaceNavEntry[] {
   const visiblePaths = new Set(
     visible

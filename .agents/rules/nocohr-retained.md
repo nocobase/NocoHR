@@ -148,7 +148,7 @@ V4-13 serves a minimal MCP endpoint of its own at `POST /api/talent/agent/mcp` (
 
 `AppRouter` wraps required pages in `RequireSignIn` and guest pages in `GuestOnly` (`client/routing/authentication-gates.tsx`) instead of using the authentication plugin's guards directly. The plugin's guards redirect to a fixed `/login` and `/`, so a deep link opened while signed out lost its path and query. The gates carry the requested location as `/login?redirect=<path>` and return there after sign-in or registration, then render the plugin's guard. `client/routing/sign-in-return.ts` accepts only an application-internal path and rejects absolute, protocol-relative and backslash URLs, control characters and the guest pages. Keep both on upgrade until the plugin can carry a return location itself.
 
-The Settings header entry appears only when the user has an accessible page in the settings navigation, and stays visible on that page. The header reads the registered settings tree through `useClientApplication().runtime.settingsRouteTree`, reusing the application context. The Dev tools entry stays visible on its destination pages, is development-only, and must remain absent from production builds.
+The Settings header entry appears only when the user has an accessible page in the settings navigation, and stays visible on that page. The header reads the registered settings tree through `useClientApplication().runtime.routes`, filtered with `surfaceRoutes`, reusing the application context. The Dev tools entry stays visible on its destination pages, is development-only, and must remain absent from production builds.
 
 `client/routing/`, `client/layouts/`, `client/theme/`, the server entry points, the `package.json` scripts that call `nocobase`, and the tsconfigs are the scaffolding the template provides. It is still this application's own source — it shipped to the user and they may change it — but it is the part the template evolves, so an edit there is what a future upgrade has to reconcile.
 
@@ -181,7 +181,7 @@ Route paths are application-internal. Never write the deployment base path such 
 
 `auth` controls browser navigation only: `required` for signed-in pages, `guest` for sign-in and registration, `optional` for pages that work either way. It is not server security. An endpoint the page calls enforces its own authentication independently.
 
-Use `defineSettingsRoutes()` for administrative pages, which mount under `/settings`, and `defineDevRoutes()` for development-only pages, which mount under `/dev` and are absent from a production build. Do not repeat `/settings` or `/dev` in the path. `defineDevRoutes()` is a build boundary, not a permission boundary: a page that must be restricted in production is a settings route with `authz`, enforced by the server.
+Client 3 uses `defineAppRoutes()` for every page. Keep administrative URLs under `/settings`, and declare developer URLs under `/dev` in `client/dev-routes.ts` inside its `import.meta.env.DEV` branch. The application partitions the unified route list into its retained shells; this build boundary is not server authorization. Preserve each existing resource/action and enforce it on the server.
 
 **Declare navigation on the route.** App, Settings and Dev menus read `navigation: { title: 'navigation.orders' }`; titles resolve in the owning locale namespace. Add the translation in `client/locales/`. Refine resources do not add menu entries.
 

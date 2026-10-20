@@ -1,3 +1,7 @@
+import databaseExplorer from './modules/database-explorer-zh-CN.js';
+import apiKeys from './modules/api-keys-zh-CN.js';
+import templateSettings from './system/settings-zh-CN.js';
+import deviceApproval from '#extensions/nocobase-device-approval/locales/zh-CN';
 import { coreHrAdditions } from './modules/core-hr-additions.js';
 // V3-10
 import { examAdditions } from './modules/exam-additions.js';
@@ -23,6 +27,15 @@ import { payrollOpeningAdditions } from './modules/payroll-opening.js';
 import type { AppResource } from './en-US.js';
 
 const zhCN: AppResource = {
+  databaseExplorer,
+  apiKeys,
+  'auth.preparingSession': '正在准备登录会话…',
+  'auth.connectionFailed': '连接失败',
+  'auth.connectionFailedDescription':
+    '实时连接暂时无法准备就绪。请重试后进入应用，或退出登录。',
+  'auth.retry': '重试',
+
+  ...deviceApproval,
   // AI chat tool-call cards (client/extensions/nocobase-ai/components/chat/tool-call-card.tsx).
   aiTools: aiToolNames.zh,
   // V1-02 additions (client/locales/modules/core-hr-additions.ts).
@@ -1335,6 +1348,18 @@ const zhCN: AppResource = {
     page: '{{title}}页面',
   },
   settings: {
+    revokeAssignmentFor: '撤销“{{name}}”的角色授权？',
+    databaseExplorer: '数据库浏览器',
+    revokeAssignment: '撤销这项角色授权？',
+    assignments: '授权对象',
+    revoke: '撤销',
+    assign: '授权',
+    subjectType: '对象类型',
+    subjectSearch: '搜索人员或团队',
+    subject: '授权对象',
+
+    ...templateSettings,
+    apiKeys: 'API 密钥',
     title: '设置',
     emptyTitle: '暂无可用设置',
     emptyDescription: '没有已启用的插件提供你有权访问的设置页面。',

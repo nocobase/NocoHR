@@ -77,7 +77,12 @@ export function SettingsLayout({
     matches
       ?.filter(({ route }) => route.componentLoader)
       .slice(0, 1)
-      .some(({ route }) => denied.has(routeKey(route))) ||
+      .some(
+        ({ route }) =>
+          route.source === 'plugin' &&
+          (route.navigation || route.children?.length) &&
+          denied.has(routeKey(route)),
+      ) ||
     !matches?.some(({ route }) => route.componentLoader)
   ) {
     return visible[0] ? (
