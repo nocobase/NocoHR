@@ -8,6 +8,7 @@ import {
 } from '@nocobase/db';
 import { sqlite } from '@nocobase/db-sqlite';
 import { createAppAuthorization } from '@nocobase/app-plugin-authorization/server';
+import { defaultAccess } from '@nocobase/app-plugin-authz-default-access/server';
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -15,7 +16,10 @@ afterEach(async () => {
 });
 async function fixture() {
   const db = createDatabaseManager({
-    connections: { main: sqlite({ filename: ':memory:' }) },
+    default: 'main',
+    connections: {
+      main: sqlite({ filename: ':memory:', schemaManagement: 'managed' }),
+    },
     metadataStore: new InMemoryCollectionMetadataStore(),
   });
   cleanup.push(() => db.destroy());
@@ -24,6 +28,12 @@ async function fixture() {
     import.meta.url,
   );
   if (!manifest) throw new Error('Missing target authorization package');
+  const defaultAccessManifest = findPackageJSON(
+    '@nocobase/app-plugin-authz-default-access/server',
+    import.meta.url,
+  );
+  if (!defaultAccessManifest)
+    throw new Error('Missing target default-access package');
   await db
     .createMigrator({
       sources: [
@@ -34,14 +44,35 @@ async function fixture() {
             'dist/database/migrations',
           ),
         },
+        {
+          packageName: '@nocobase/app-plugin-authz-default-access',
+          directory: path.join(
+            path.dirname(defaultAccessManifest),
+            'dist/database/migrations',
+          ),
+        },
       ],
     })
     .latest();
+  await db.builder().createCollection('documents', (collection) => {
+    collection.string('id').primary();
+    collection.string('title');
+  });
   const authz = createAppAuthorization({
     database: db,
     connection: db.connection(),
+    config: { plugins: [defaultAccess()] },
   });
-  const users = ['manager', 'reader', 'alice', 'bob'];
+  authz.database.collections.add({ name: 'documents', title: 'Documents' });
+  const users = [
+    'manager',
+    'reader',
+    'alice',
+    'bob',
+    'creator',
+    'updater',
+    'deleter',
+  ];
   authz.subjects.add('user', {
     filterActive: async (ids) => ids.filter((id) => users.includes(id)),
     administration: {
@@ -61,18 +92,36 @@ async function fixture() {
       },
     },
   });
-  for (const [key, actions] of [
-    ['manager', ['read', 'assign']],
-    ['reader', ['read']],
+  for (const [key, actions, defaultAccessActions] of [
+    ['manager', ['read', 'assign'], ['read', 'create', 'update', 'delete']],
+    ['reader', ['read'], ['read']],
   ] as const) {
     await authz.permissionSets.create({
       key,
       grants: [
         authz.settings.grant('authorization.permission-sets', actions),
+        authz.settings.grant(
+          'authorization.default-access',
+          defaultAccessActions,
+        ),
         ...(key === 'manager'
           ? [authz.settings.grant('authorization.inspector', ['inspect'])]
           : []),
       ],
+    });
+    await authz.permissionSets.assign({
+      permissionSet: key,
+      subject: { type: 'user', id: key },
+    });
+  }
+  for (const [key, actions] of [
+    ['creator', ['create']],
+    ['updater', ['update']],
+    ['deleter', ['delete']],
+  ] as const) {
+    await authz.permissionSets.create({
+      key,
+      grants: [authz.settings.grant('authorization.default-access', actions)],
     });
     await authz.permissionSets.assign({
       permissionSet: key,
@@ -245,4 +294,121 @@ it('uses native inspect, batch and configured access for restricted subjects and
       write: 0,
     }),
   );
+});
+
+it('uses the target default-access routes with restricted action identities and native SQLite storage', async () => {
+  const { request, costs } = await fixture();
+  const resource = { type: 'database.collection', id: 'documents' };
+  const options = await request('manager', '/defaultAccess/options');
+  expect(options.status).toBe(200);
+  expect(await options.json()).toMatchObject({ data: expect.any(Object) });
+  expect(
+    (
+      await request(
+        'manager',
+        '/defaultAccess/records/documents?page=1&pageSize=20',
+      )
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await request(
+        'alice',
+        '/defaultAccess/records/documents?page=1&pageSize=20',
+      )
+    ).status,
+  ).toBe(403);
+
+  const invalid = await request('creator', '/defaultAccess', 'POST', {
+    key: 'documents-baseline',
+    resource,
+    actions: [{ action: 'not-registered', selection: { type: 'all' } }],
+  });
+  expect(invalid.status).toBe(400);
+  expect(await invalid.json()).toMatchObject({
+    error: {
+      reason: 'INVALID_AUTHORIZATION_INPUT',
+      fieldViolations: expect.any(Array),
+    },
+  });
+
+  const created = await request('creator', '/defaultAccess', 'POST', {
+    key: 'documents-baseline',
+    resource,
+    actions: [{ action: 'read', selection: { type: 'all' } }],
+  });
+  expect(created.status).toBe(201);
+  expect(await created.json()).toMatchObject({
+    data: {
+      key: 'documents-baseline',
+      resource,
+      actions: [{ action: 'read', selection: { type: 'all' } }],
+    },
+  });
+
+  const listed = await request('manager', '/defaultAccess');
+  expect(listed.status).toBe(200);
+  expect(await listed.json()).toMatchObject({
+    data: [{ key: 'documents-baseline', resource }],
+    meta: { total: 1 },
+  });
+  expect((await request('reader', '/defaultAccess')).status).toBe(200);
+  expect((await request('alice', '/defaultAccess')).status).toBe(403);
+  expect(
+    (
+      await request('reader', '/defaultAccess', 'POST', {
+        key: 'denied-create',
+        resource,
+        actions: [{ action: 'read', selection: { type: 'all' } }],
+      })
+    ).status,
+  ).toBe(403);
+
+  const updated = await request(
+    'updater',
+    '/defaultAccess/documents-baseline',
+    'PATCH',
+    {
+      actions: [
+        { action: 'read', selection: { type: 'records', ids: ['doc-1'] } },
+      ],
+    },
+  );
+  expect(updated.status).toBe(200);
+  expect(await updated.json()).toMatchObject({
+    data: {
+      key: 'documents-baseline',
+      actions: [
+        { action: 'read', selection: { type: 'records', ids: ['doc-1'] } },
+      ],
+    },
+  });
+  expect(
+    (
+      await request('reader', '/defaultAccess/documents-baseline', 'PATCH', {
+        actions: [{ action: 'read', selection: { type: 'all' } }],
+      })
+    ).status,
+  ).toBe(403);
+  expect(
+    (await request('deleter', '/defaultAccess/documents-baseline', 'DELETE'))
+      .status,
+  ).toBe(204);
+  expect(
+    await (await request('manager', '/defaultAccess')).json(),
+  ).toMatchObject({
+    data: [],
+    meta: { total: 0 },
+  });
+
+  const reserved = await request('manager', '/defaultAccess', 'POST', {
+    key: 'options',
+    resource,
+    actions: [{ action: 'read', selection: { type: 'all' } }],
+  });
+  expect(reserved.status).toBe(400);
+  expect(await reserved.json()).toMatchObject({
+    error: { reason: 'INVALID_INPUT' },
+  });
+  console.info('Native default-access requests', JSON.stringify(costs));
 });

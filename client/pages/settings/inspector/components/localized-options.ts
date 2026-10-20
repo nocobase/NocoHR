@@ -108,6 +108,7 @@ export function localizeOptions(
     recordAccess: raw.recordAccess.map((entry) => ({
       value: entry.key,
       label: text(entry.title),
+      collections: entry.collections,
       ...(entry.description === undefined
         ? {}
         : { description: text(entry.description) }),

@@ -32,6 +32,14 @@ it('preserves the former Users, API Keys and Explorer page grants when their tar
     resource: { type: 'settings', id: 'authorization.permission-sets' },
     action: 'read',
   });
+  expect(
+    pages.find(
+      (route) => route.path === '/settings/authorization/default-access',
+    )?.authz,
+  ).toEqual({
+    resource: { type: 'settings', id: 'authorization.default-access' },
+    action: 'read',
+  });
 });
 
 it('preserves every existing NocoHR settings URL and resource/action, including deep editors', () => {

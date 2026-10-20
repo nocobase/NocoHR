@@ -4,6 +4,7 @@ import {
   Users,
   ShieldCheck,
   ScanSearch,
+  LockKeyhole,
 } from 'lucide-react';
 import {
   defineAppRoutes,
@@ -88,6 +89,22 @@ const systemSettingsRoutes: AppClientRouteContribution = defineAppRoutes([
             ],
           },
         ],
+      },
+      {
+        name: 'settingsDefaultAccess',
+        path: '/authorization/default-access',
+        auth: 'required',
+        authz: {
+          resource: { type: 'settings', id: 'authorization.default-access' },
+          action: 'read',
+        },
+        navigation: {
+          title: 'settings.defaultAccess',
+          icon: LockKeyhole,
+          order: 990,
+        },
+        breadcrumb: { title: 'settings.defaultAccess' },
+        componentLoader: () => import('./default-access/index.js'),
       },
       {
         name: 'settingsAuthorizationInspector',

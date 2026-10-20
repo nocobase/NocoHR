@@ -59,6 +59,9 @@ export interface DatabaseCollectionOption {
   name: string;
   fields: readonly string[];
 }
+export interface RecordAccessOption extends SelectOption {
+  collections?: readonly string[];
+}
 export interface SubjectTypeOption extends SelectOption {
   selection?:
     | {
@@ -80,5 +83,5 @@ export interface AuthorizationOptions {
   sections: readonly SectionOption[];
   subjectTypes: readonly SubjectTypeOption[];
   collections: readonly DatabaseCollectionOption[];
-  recordAccess: readonly SelectOption[];
+  recordAccess: readonly RecordAccessOption[];
 }
