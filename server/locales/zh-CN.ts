@@ -11,6 +11,9 @@ import { goLiveServerZh } from './modules/go-live.js';
 import { licensedServerZh } from './modules/licensed.js';
 
 const zhCN: AppServerResource = {
+  processes: {
+    authorization: { section: '自动化', title: '工作流', manage: '管理工作流' },
+  },
   workbench: {
     title: '工作台',
     description: '集中处理审批、AI 准备事项与系统提醒。',

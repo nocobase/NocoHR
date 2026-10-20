@@ -28,6 +28,11 @@ function inventory(): UpgradeInventory {
       nodeTypes: ['run'],
       customHandlers: [],
       activeRuns: 0,
+      unqueuedRuns: 0,
+      interruptedNodes: 0,
+      unmappedParameters: 0,
+      unmappedBranchJoins: 0,
+      unverifiedScheduleUsers: 0,
       missingArtifacts: 0,
       unmappedRecords: 0,
     },
@@ -54,6 +59,31 @@ function replacement(): ReplacementCapabilities {
 }
 
 describe('capability migration preflight', () => {
+  it.each([
+    ['unqueuedRuns', 'UNQUEUED_PROCESS_RUNS'],
+    ['interruptedNodes', 'INTERRUPTED_PROCESS_NODES'],
+    ['unmappedParameters', 'WORKFLOW_PARAMETERS_NOT_MAPPED'],
+    ['unmappedBranchJoins', 'WORKFLOW_BRANCH_JOINS_NOT_MAPPED'],
+    ['unverifiedScheduleUsers', 'UNVERIFIED_SCHEDULE_USERS'],
+  ] as const)(
+    'requires reconciliation of %s without accepting missing evidence',
+    (field, code) => {
+      const input = inventory();
+      input.workflows[field] = 1;
+      expect(checkUpgradeReadiness(input, replacement())).toEqual({
+        ready: false,
+        findings: [{ code, count: 1 }],
+      });
+      const incomplete = structuredClone(input) as unknown as {
+        workflows: Record<string, unknown>;
+      };
+      delete incomplete.workflows[field];
+      expect(checkUpgradeReadiness(incomplete, replacement())).toEqual({
+        ready: false,
+        findings: [{ code: 'INVALID_INVENTORY', count: 1 }],
+      });
+    },
+  );
   it('does not treat unchanged ledger records or unmapped automatic policy as verified', () => {
     const input = inventory();
     input.ai.unverifiedToolProfiles = 2;

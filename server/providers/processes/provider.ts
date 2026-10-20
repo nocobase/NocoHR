@@ -10,11 +10,12 @@ import type { JobExecutor } from '@nocobase/jobs';
 import { schedulerServiceToken } from '@nocobase/app-plugin-scheduler/server/tokens';
 import { authorizationToken } from '@nocobase/app-plugin-authorization/server';
 import { scopeForUser } from '../hr/authorize.js';
-import type { ProcessesConfig } from '../../config/processes.js';
 import {
-  processHandlers,
-  processScheduledUsers,
-} from '../../processes/index.js';
+  processesConfigSchema,
+  type ProcessesConfig,
+} from '../../config/processes.js';
+import { processHandlers } from '../../processes/index.js';
+import { registerProcessAuthorization } from './authorization.js';
 import { ProcessCatalog } from './catalog.js';
 import { ProcessService, bindProcessJobs } from './service.js';
 import { ProcessHistory } from './history.js';
@@ -72,6 +73,11 @@ export default class ProcessesProvider extends ServiceProvider<Application> {
     );
   }
   public override async boot() {
+    // Plugin providers boot first. Preserve their registration while installed,
+    // and retain the same grant identity when the retired plugin is removed.
+    registerProcessAuthorization(
+      this.app.container.resolve(authorizationToken),
+    );
     if (!this.catalog) return;
     await this.catalog.load(
       path.resolve(import.meta.dirname, '../../processes/artifacts'),
@@ -84,7 +90,17 @@ export default class ProcessesProvider extends ServiceProvider<Application> {
         this.app.container.resolve(processServiceToken),
         this.executor,
         this.app.container.resolve(schedulerServiceToken),
-        (scheduleId) => processScheduledUsers.get(scheduleId),
+        (scheduleId) => {
+          // Read the current server-only delegation, including configuration reloads.
+          // Never accept an execution user from an editable Scheduler target.
+          const config = processesConfigSchema.parse(
+            this.app.config.get('processes'),
+          );
+          if (!config.enabled) return undefined;
+          return Object.hasOwn(config.scheduleUsers, scheduleId)
+            ? config.scheduleUsers[scheduleId]
+            : undefined;
+        },
       )
     ).enqueue;
   }

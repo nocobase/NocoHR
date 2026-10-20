@@ -18,6 +18,8 @@ An execution error after a possible business write marks a tool call or process 
 
 The AI inventory now also requires `unverifiedToolProfiles` and `autoPolicyDifferences` counts. Previously copied profiles that have not been reconciled against their old effective tools and later edits must be counted as unverified, even when the ledger reports `unchanged`. The CUSTOM/default-ASK/autoCall=true mismatch must be counted as an automatic-policy difference until adapted or explicitly resolved; either positive count blocks cutover. Missing counts invalidate the inventory.
 
+Workflow inventory also requires `unqueuedRuns`, `interruptedNodes`, `unmappedParameters`, `unmappedBranchJoins` and `unverifiedScheduleUsers`. Missing or positive counts block cutover. Accepted work without confirmed native job acceptance and occupied/uncertain nodes require individual reconciliation; repeated submission does not repair them. See [business source inventory and wiring](process-unit.md#business-source-inventory-and-independent-wiring) for the source checks, delegation configuration and minimum deployment mapping evidence. No deployed definition or execution user is inferred from the empty source registry.
+
 The command currently reports the replacement runtimes as unverified even for an empty inventory. A synthetic empty inventory is not evidence that an existing installation has no data. Readiness must be based on an actual installation's metadata, complete capability adapters and integration evidence.
 
 ## Remaining integration

@@ -17,9 +17,29 @@ import schedulerPlugin, {
 } from '@nocobase/app-plugin-scheduler/server';
 import { schedulerServiceToken } from '@nocobase/app-plugin-scheduler/server/tokens';
 import { authenticationToken } from '@nocobase/app-plugin-authentication/server';
-import { authorizationToken } from '@nocobase/app-plugin-authorization/server';
+import authorizationPlugin, {
+  authorizationToken,
+  createAppAuthorization,
+} from '@nocobase/app-plugin-authorization/server';
+import { Application } from '@nocobase/app-server/application';
+import { AppConfig, createAppPaths } from '@nocobase/app-server/config';
 import { z } from 'zod';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
+import processesConfig from '../../server/config/processes.js';
+import ProcessesProvider from '../../server/providers/processes/provider.js';
+import { processHandlers } from '../../server/processes/index.js';
+import { createWorkItemStore } from '../../server/providers/hr/work-item-store.js';
+import { scopeForUser } from '../../server/providers/hr/authorize.js';
+import { registerProcessAuthorization } from '../../server/providers/processes/authorization.js';
+import workItemsMigration from '../../database/main/migrations/202609290005_create_work_items.js';
+import workItemDetailMigration from '../../database/main/migrations/202610150001_add_work_item_detail.js';
+
+// Synthetic contract only. The production registry stays empty until a real definition is supplied.
+vi.mock('../../server/processes/index.js', () => ({
+  processHandlers: new Map(),
+  processDefinitions: [],
+  legacyProcessModules: new Map(),
+}));
 import m31 from '../../database/main/migrations/202610270031_create_capability_migration_state.js';
 import m32 from '../../database/main/migrations/202610270032_create_process_execution_state.js';
 import m35 from '../../database/main/migrations/202610270035_create_process_history.js';
@@ -43,9 +63,476 @@ import type { ProcessHandler } from '../../server/providers/processes/engine.js'
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  vi.restoreAllMocks();
+  (processHandlers as Map<string, ProcessHandler>).clear();
 });
 const workflowId = '9223372036854775700',
   oldRunId = '9223372036854775710';
+
+async function traceCosts(db: Awaited<ReturnType<typeof fixture>>['db']) {
+  const statements: string[] = [];
+  const client = await db.connection().client<{
+    on(event: string, fn: (q: { sql: string }) => void): void;
+    removeListener(event: string, fn: (q: { sql: string }) => void): void;
+  }>();
+  const listener = (query: { sql: string }) => statements.push(query.sql);
+  client.on('query', listener);
+  cleanups.push(async () => {
+    client.removeListener('query', listener);
+  });
+  return async <T>(operation: string, work: () => Promise<T>) => {
+    statements.length = 0;
+    const result = await work();
+    console.log(
+      'PROVIDER_SQL_COST',
+      JSON.stringify({
+        operation,
+        selects: statements.filter((s) => /^select\b/iu.test(s)).length,
+        inserts: statements.filter((s) => /^insert\b/iu.test(s)).length,
+        updates: statements.filter((s) => /^update\b/iu.test(s)).length,
+        begins: statements.filter((s) => /^begin\b/iu.test(s)).length,
+        savepoints: statements.filter((s) => /^savepoint\b/iu.test(s)).length,
+      }),
+    );
+    return result;
+  };
+}
+
+async function providerFixture(enabled = true, inherited = false) {
+  const f = await fixture();
+  const runMigration = async (migration: typeof workItemsMigration) =>
+    migration.up!({
+      builder: f.db.builder(),
+      query: f.db.query(),
+      repository: (name: string) => f.db.repository(name),
+    } as never);
+  for (const plugin of [authorizationPlugin, schedulerPlugin]) {
+    const directory = path.resolve(
+      plugin.baseDir!,
+      plugin.database!.migrations as string,
+    );
+    for (const filename of (await readdir(directory))
+      .filter((name) => /^\d.*\.js$/u.test(name))
+      .sort()) {
+      await runMigration(
+        (await import(pathToFileURL(path.join(directory, filename)).href))
+          .default,
+      );
+    }
+  }
+  for (const migration of [workItemsMigration, workItemDetailMigration])
+    await runMigration(migration);
+  const authz = createAppAuthorization({
+    database: f.db,
+    connection: f.db.connection(),
+  });
+  authz.subjects.add('user', { filterActive: async (ids) => [...ids] });
+  if (inherited)
+    authz.settings.add({
+      id: 'workflow',
+      title: 'Existing workflow title',
+      actions: [{ name: 'manage', title: 'Existing manage title' }],
+    });
+  const workItems = createWorkItemStore(f.db.connection());
+  f.handlers.set('save', async ({ actorUserId }) => {
+    await workItems.put({
+      recipientUserId: actorUserId!,
+      type: 'process-test',
+      refType: 'test',
+      refId: 'synthetic-contract',
+      title: 'Synthetic reminder',
+      link: '/talent/workbench',
+      sourceKind: 'rule',
+    });
+    f.counts.work++;
+    return { saved: true };
+  });
+  for (const [name, handler] of f.handlers)
+    (processHandlers as Map<string, ProcessHandler>).set(name, handler);
+  const load = ProcessCatalog.prototype.load;
+  vi.spyOn(ProcessCatalog.prototype, 'load').mockImplementation(function () {
+    return load.call(this, f.artifacts);
+  });
+  const configPath = path.join(f.directory, 'process-config.json');
+  await writeFile(
+    configPath,
+    JSON.stringify({ processes: { enabled, scheduleUsers: {} } }),
+  );
+  const config = new AppConfig();
+  config.loadFile(configPath);
+  await config.loadAll();
+  config.mergeDefaults({
+    app: { name: 'process-provider-test', publicBasePath: '/main' },
+    processes: processesConfig({} as never),
+  });
+  config.defineSections(new Map([['processes', processesConfig.rules!]]));
+  const app = new Application({
+    config,
+    paths: createAppPaths({ rootDir: f.directory }),
+    websocket: () => ({}) as never,
+    strictStartup: true,
+  });
+  const jobs = createJobExecutorService(
+    {
+      default: 'test',
+      test: {
+        adapter: 'memory',
+        attempts: 1,
+        persistence: { path: path.join(f.directory, 'provider-jobs') },
+      },
+    },
+    { appName: app.appName, storagePath: f.directory },
+  );
+  const scheduled: import('@nocobase/jobs').ScheduleJob[] = [];
+  const original = jobs.getScheduleExecutor.bind(jobs);
+  vi.spyOn(jobs, 'getScheduleExecutor').mockImplementation((scope, name) => {
+    const executor = original(scope, name);
+    return new Proxy(executor, {
+      get(target, property) {
+        if (property === 'addJob')
+          return async (job, registerOnly) => {
+            scheduled.push(job);
+            return target.addJob(job, registerOnly);
+          };
+        // Drive captured native firings explicitly, without a wall-clock timer.
+        if (property === 'setup') return () => target.setup({ consume: false });
+        const value = Reflect.get(target, property);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  });
+  app.container.instance(databaseManagerToken, f.db);
+  app.container.instance(authorizationToken, authz);
+  app.container.instance(jobExecutorServiceToken, jobs);
+  app.container.instance(authenticationToken, {
+    required: () => async (c, next) => {
+      const id = c.req.header('x-user');
+      if (!id) return c.json({ error: 'AUTHENTICATION_REQUIRED' }, 401);
+      c.set('auth', { user: { id } });
+      return next();
+    },
+  } as never);
+  app.addServiceProvider(
+    schedulerPlugin.serviceProviders!.find(
+      (p) => p.name === 'SchedulerProvider',
+    )! as never,
+  );
+  app.addServiceProvider(ProcessesProvider);
+  app.addRoutes(processRoutes);
+  cleanups.push(async () => {
+    await app.shutdown();
+    await jobs.shutdown();
+  });
+  app.registerProviders();
+  const scheduler = app.container.resolve(
+    schedulerServiceToken,
+  ) as import('@nocobase/app-plugin-scheduler/server/tokens').SchedulerService & {
+    listOccurrences(id: string): Promise<{ status: string }[]>;
+  };
+  if (enabled)
+    scheduler.defineSchedule({
+      key: 'synthetic-only',
+      title: 'Synthetic reminder contract',
+      schedule: { cron: '0 0 1 1 *', timezone: 'UTC' },
+      target: {
+        type: 'app.process',
+        config: { key: 'approval', hash: f.hash, input: { allow: true } },
+      },
+    });
+  await app.start();
+  const executor = jobs.getJobExecutor('@hr/processes');
+  const delegate = async (userId?: string, on = enabled) => {
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        processes: {
+          enabled: on,
+          scheduleUsers: userId ? { [scheduled[0]!.name]: userId } : {},
+        },
+      }),
+    );
+    await config.reload();
+  };
+  const grant = async (user = 'manager') => {
+    const key = 'workflow-' + user;
+    await authz.permissionSets.create({
+      key,
+      grants: [authz.settings.grant('workflow', ['manage'])],
+    });
+    return authz.permissionSets.assign({
+      subject: { type: 'user', id: user },
+      permissionSet: key,
+    });
+  };
+  const fire = async (event: string) => {
+    const now = new Date();
+    await scheduled[0]!.execute({
+      jobId: event,
+      scheduledAt: now,
+      runAt: now,
+      signal: new AbortController().signal,
+    });
+  };
+  const completed = () =>
+    new Promise<string>((resolve) => {
+      const unsubscribe = executor.subscribe((event) => {
+        if (event.name === 'JobEnd' || event.name === 'JobError') {
+          unsubscribe();
+          resolve(event.name);
+        }
+      });
+    });
+  return {
+    ...f,
+    authz,
+    app,
+    jobs,
+    executor,
+    scheduler,
+    scheduled,
+    config,
+    configPath,
+    delegate,
+    grant,
+    fire,
+    completed,
+  };
+}
+
+it('retains workflow/manage without the retired plugin and does not replace its existing catalog item', async () => {
+  const f = await providerFixture(false);
+  expect(f.app.container.has(processServiceToken)).toBe(false);
+  expect(f.authz.settings.grant('workflow', ['manage'])).toMatchObject({
+    resource: { type: 'settings', id: 'workflow' },
+  });
+  expect(f.config.publicValues()).toEqual({});
+  await f.grant();
+  const before = await f.db
+    .repository('authorizationPermissionSets')
+    .findMany();
+  const provider = new ProcessesProvider(f.app);
+  await provider.boot();
+  expect(
+    await f.db.repository('authorizationPermissionSets').findMany(),
+  ).toEqual(before);
+  // Rebuild the authorization service and provider using the saved grants; no retired plugin is loaded.
+  const authz = createAppAuthorization({
+    database: f.db,
+    connection: f.db.connection(),
+  });
+  authz.subjects.add('user', { filterActive: async (ids) => [...ids] });
+  const container = new ServiceContainer();
+  container.instance(authorizationToken, authz);
+  await new ProcessesProvider({
+    container,
+    config: { get: () => ({ enabled: false }) },
+  } as never).boot();
+  const scoped = await scopeForUser(authz, 'manager');
+  expect(
+    (
+      await scoped.authorize({
+        resource: { type: 'settings', id: 'workflow' },
+        action: 'manage',
+      })
+    ).effect,
+  ).toBe('permit');
+});
+
+it('preserves the installed workflow authorization definition while exercising native application lifecycle', async () => {
+  const f = await providerFixture(false, true);
+  expect(
+    f.authz.resourceTypes.get('settings').items!.get('workflow')!.title,
+  ).toBe('Existing workflow title');
+  await f.app.shutdown();
+  await f.app.shutdown();
+});
+
+it('runs the actual work-item service once through provider Jobs and native concurrent schedule dispatch', async () => {
+  const f = await providerFixture();
+  await f.grant();
+  await f.delegate('manager');
+  const measure = await traceCosts(f.db);
+  await measure('provider-native-concurrent-success', async () => {
+    const completion = f.completed();
+    await Promise.all([f.fire('provider-once'), f.fire('provider-once')]);
+    expect(await completion).toBe('JobEnd');
+  });
+  expect(f.counts.work).toBe(1);
+  expect(await f.db.repository('workItems').findMany()).toMatchObject([
+    { recipientUserId: 'manager', status: 'open' },
+  ]);
+  expect(await f.scheduler.listOccurrences(f.scheduled[0]!.name)).toMatchObject(
+    [{ status: 'succeeded' }],
+  );
+  const run = (await f.db.repository('processRuns').findMany())[0]!;
+  await measure('provider-terminal-duplicate', () =>
+    f.app.container
+      .resolve(processServiceToken)
+      .execute(String(run.eventKey), new AbortController().signal),
+  );
+  expect(f.counts.work).toBe(1);
+});
+
+it('blocks unbound and unpermitted schedule actors with no business or process writes', async () => {
+  const f = await providerFixture();
+  await f.grant();
+  await expect(f.fire('unbound')).rejects.toThrow(
+    'PROCESS_SCHEDULE_NOT_AUTHORIZED',
+  );
+  await f.delegate('outsider');
+  await expect(f.fire('not-permitted')).rejects.toThrow('PROCESS_FORBIDDEN');
+  expect(f.counts.work).toBe(0);
+  expect(await f.db.repository('workItems').count()).toBe(0);
+  expect(await f.db.repository('processRuns').count()).toBe(0);
+  expect(await f.scheduler.listOccurrences(f.scheduled[0]!.name)).toMatchObject(
+    [{ status: 'failed' }, { status: 'failed' }],
+  );
+});
+
+it('observes delegation removal and disabled configuration on the next native firing', async () => {
+  const f = await providerFixture();
+  await f.grant();
+  await f.delegate('manager');
+  await f.delegate();
+  await expect(f.fire('delegation-removed')).rejects.toThrow(
+    'PROCESS_SCHEDULE_NOT_AUTHORIZED',
+  );
+  await f.delegate('manager', false);
+  await expect(f.fire('runtime-disabled')).rejects.toThrow(
+    'PROCESS_SCHEDULE_NOT_AUTHORIZED',
+  );
+  expect(f.counts.work).toBe(0);
+  expect(await f.db.repository('processRuns').count()).toBe(0);
+});
+
+it('rechecks real permission-set revocation between nodes and reports native failure without replay', async () => {
+  const f = await providerFixture();
+  const assignment = await f.grant();
+  await f.delegate('manager');
+  (processHandlers as Map<string, ProcessHandler>).set('check', async () => {
+    await f.authz.permissionSets.revoke(assignment.id);
+    return true;
+  });
+  const completion = f.completed();
+  await f.fire('revoke-between-nodes');
+  expect(await completion).toBe('JobError');
+  expect(f.counts.work).toBe(0);
+  expect(await f.db.repository('workItems').count()).toBe(0);
+  expect(await f.db.repository('processNodeRuns').count()).toBe(1);
+  expect(await f.scheduler.listOccurrences(f.scheduled[0]!.name)).toMatchObject(
+    [{ status: 'failed' }],
+  );
+  await f.fire('revoke-between-nodes');
+  expect(await f.db.repository('processNodeRuns').count()).toBe(1);
+});
+
+it('protects application routes with the real authorization service after plugin removal', async () => {
+  const f = await providerFixture();
+  const call = (user?: string) =>
+    f.app.fetch(
+      new Request('http://localhost/api/processDefinitions', {
+        headers: user ? { 'x-user': user } : {},
+      }),
+    );
+  const measure = await traceCosts(f.db);
+  expect((await call()).status).toBe(401);
+  expect(
+    (await measure('provider-api-denied', () => call('manager'))).status,
+  ).toBe(403);
+  const assignment = await f.grant();
+  expect(
+    (await measure('provider-api-definitions', () => call('manager'))).status,
+  ).toBe(200);
+  expect((await call('outsider')).status).toBe(403);
+  await f.authz.permissionSets.revoke(assignment.id);
+  expect((await call('manager')).status).toBe(403);
+});
+
+it('authorizes manual submission as the signed-in actor and blocks revoked or cross-user writes', async () => {
+  const f = await providerFixture();
+  const submit = (user?: string, extra = {}) =>
+    f.app.fetch(
+      new Request('http://localhost/api/processRuns', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(user ? { 'x-user': user } : {}),
+        },
+        body: JSON.stringify({
+          key: 'approval',
+          hash: f.hash,
+          eventKey: 'manual-business',
+          input: { allow: true },
+          ...extra,
+        }),
+      }),
+    );
+  expect((await submit()).status).toBe(401);
+  expect((await submit('manager')).status).toBe(403);
+  expect(await f.db.repository('processRuns').count()).toBe(0);
+  const assignment = await f.grant();
+  expect((await submit('outsider')).status).toBe(403);
+  expect((await submit('manager', { actorUserId: 'outsider' })).status).toBe(
+    400,
+  );
+  const completion = f.completed();
+  expect((await submit('manager')).status).toBe(202);
+  expect(await completion).toBe('JobEnd');
+  expect(await f.db.repository('workItems').findMany()).toMatchObject([
+    { recipientUserId: 'manager', status: 'open' },
+  ]);
+  expect(f.counts.work).toBe(1);
+  expect((await submit('manager')).status).toBe(202);
+  expect(f.counts.work).toBe(1);
+  await f.authz.permissionSets.revoke(assignment.id);
+  expect(
+    (await submit('manager', { eventKey: 'after-revocation' })).status,
+  ).toBe(403);
+  expect(await f.db.repository('processRuns').count()).toBe(1);
+  expect(f.counts.work).toBe(1);
+});
+
+it('refuses an incompatible pre-existing workflow authorization resource', () => {
+  const authz = createAppAuthorization({});
+  authz.settings.add({
+    id: 'workflow',
+    title: 'Existing workflow',
+    actions: [{ name: 'read' }],
+  });
+  expect(() => registerProcessAuthorization(authz)).toThrow(
+    'PROCESS_AUTHORIZATION_CONTRACT_MISMATCH',
+  );
+  expect(
+    authz.resourceTypes.get('settings').items!.get('workflow')!.actions,
+  ).toEqual([{ name: 'read' }]);
+});
+
+it.each([
+  null,
+  [],
+  { wrong: 'manager' },
+  { enabled: true, scheduleUsers: { '': 'manager' } },
+  { enabled: true, scheduleUsers: { schedule: '' } },
+  { enabled: 'true', scheduleUsers: {} },
+])(
+  'rejects invalid execution-user configuration without exposing its values',
+  async (processes) => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), 'process-config-test-'),
+    );
+    cleanups.push(() => rm(directory, { recursive: true, force: true }));
+    const configPath = path.join(directory, 'config.json');
+    await writeFile(configPath, '{}');
+    const config = new AppConfig();
+    config.loadFile(configPath);
+    await config.loadAll();
+    config.mergeDefaults({ processes: processesConfig({} as never) });
+    config.defineSections(new Map([['processes', processesConfig.rules!]]));
+    await writeFile(configPath, JSON.stringify({ processes }));
+    await expect(config.reload()).rejects.toThrow();
+    expect(config.get('processes.enabled')).toBe(false);
+  },
+);
 
 async function fixture() {
   const directory = await mkdtemp(path.join(tmpdir(), 'process-unit-'));

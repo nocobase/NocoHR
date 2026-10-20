@@ -9,5 +9,3 @@ export const processDefinitions: readonly Omit<ProcessDefinition, 'hash'>[] =
   [];
 /** Explicit old module specifier -> reviewed application handler. No implicit aliases. */
 export const legacyProcessModules: ReadonlyMap<string, string> = new Map();
-/** Native schedule id -> execution user. Only application source may delegate execution; target JSON cannot impersonate a user. */
-export const processScheduledUsers: ReadonlyMap<string, string> = new Map();

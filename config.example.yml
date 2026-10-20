@@ -210,3 +210,7 @@ assistant:
 # Application-owned process runtime stays opt-in until capability and history cutover checks pass.
 processes:
   enabled: false
+  # Native Scheduler schedule ID -> user ID. Obtain IDs from an authorized schedule inventory.
+  # This is server-only delegation, not a role grant. The user must retain workflow/manage.
+  # No default/root execution user; missing bindings refuse execution. Target JSON cannot set the user.
+  scheduleUsers: {}

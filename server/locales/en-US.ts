@@ -13,6 +13,13 @@ import { licensedServerEn } from './modules/licensed.js';
 // The application's own server-side wording: the in-app notifications the
 // talent platform sends. Plugin wording stays in each plugin's namespace.
 const enUS = {
+  processes: {
+    authorization: {
+      section: 'Automation',
+      title: 'Workflows',
+      manage: 'Manage workflows',
+    },
+  },
   workbench: {
     title: 'Workbench',
     description:

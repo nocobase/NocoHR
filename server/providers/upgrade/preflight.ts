@@ -25,6 +25,11 @@ export const UpgradeInventorySchema = z.strictObject({
     nodeTypes: names,
     customHandlers: names,
     activeRuns: count,
+    unqueuedRuns: count,
+    interruptedNodes: count,
+    unmappedParameters: count,
+    unmappedBranchJoins: count,
+    unverifiedScheduleUsers: count,
     missingArtifacts: count,
     unmappedRecords: count,
   }),
@@ -63,6 +68,11 @@ export type PreflightCode =
   | 'HANDLER_NOT_MAPPED'
   | 'ACTIVE_AI_TURNS'
   | 'ACTIVE_WORKFLOW_RUNS'
+  | 'UNQUEUED_PROCESS_RUNS'
+  | 'INTERRUPTED_PROCESS_NODES'
+  | 'WORKFLOW_PARAMETERS_NOT_MAPPED'
+  | 'WORKFLOW_BRANCH_JOINS_NOT_MAPPED'
+  | 'UNVERIFIED_SCHEDULE_USERS'
   | 'APPROVAL_TRANSFER_NOT_VERIFIED'
   | 'MISSING_FILES'
   | 'MISSING_SECRETS'
@@ -130,6 +140,14 @@ export function checkUpgradeReadiness(
   );
   add('ACTIVE_AI_TURNS', inventory.ai.activeTurns);
   add('ACTIVE_WORKFLOW_RUNS', inventory.workflows.activeRuns);
+  add('UNQUEUED_PROCESS_RUNS', inventory.workflows.unqueuedRuns);
+  add('INTERRUPTED_PROCESS_NODES', inventory.workflows.interruptedNodes);
+  add('WORKFLOW_PARAMETERS_NOT_MAPPED', inventory.workflows.unmappedParameters);
+  add(
+    'WORKFLOW_BRANCH_JOINS_NOT_MAPPED',
+    inventory.workflows.unmappedBranchJoins,
+  );
+  add('UNVERIFIED_SCHEDULE_USERS', inventory.workflows.unverifiedScheduleUsers);
   add(
     'APPROVAL_TRANSFER_NOT_VERIFIED',
     replacement.ai.approvalTransferVerified ? 0 : inventory.ai.pendingApprovals,

@@ -26,6 +26,7 @@ export default class MigrateProcessHistory extends AppCommand {
           { scopeForUser },
           { ProcessCatalog },
           { ProcessHistory },
+          { registerProcessAuthorization },
           registry,
         ] = await Promise.all([
           import('@nocobase/db'),
@@ -33,10 +34,14 @@ export default class MigrateProcessHistory extends AppCommand {
           import('../../server/providers/hr/authorize.js'),
           import('../../server/providers/processes/catalog.js'),
           import('../../server/providers/processes/history.js'),
+          import('../../server/providers/processes/authorization.js'),
           import('../../server/processes/index.js'),
         ]);
         const db = app.container.resolve(databaseManagerToken);
         await db.connect();
+        // This command registers providers without booting workers. Retain the
+        // authorization catalog explicitly before checking the saved grant.
+        registerProcessAuthorization(app.container.resolve(authorizationToken));
         const authorize = async (user: string) => {
           const effect = String(
             (
