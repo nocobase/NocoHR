@@ -5,6 +5,7 @@ import {
   ShieldCheck,
   ScanSearch,
   LockKeyhole,
+  Share2,
 } from 'lucide-react';
 import {
   defineAppRoutes,
@@ -87,6 +88,50 @@ const systemSettingsRoutes: AppClientRouteContribution = defineAppRoutes([
                 componentLoader: () => import('./user-form.js'),
               },
             ],
+          },
+        ],
+      },
+      {
+        name: 'settingsSharingRules',
+        path: '/authorization/sharing-rules',
+        auth: 'required',
+        authz: {
+          resource: { type: 'settings', id: 'authorization.sharing-rules' },
+          action: 'read',
+        },
+        navigation: {
+          title: 'settings.sharingRules',
+          icon: Share2,
+          order: 980,
+        },
+        breadcrumb: { title: 'settings.sharingRules' },
+        componentLoader: () => import('./sharing-rules/index.js'),
+        children: [
+          {
+            name: 'settingsSharingRuleCreate',
+            path: 'new',
+            authz: {
+              resource: {
+                type: 'settings',
+                id: 'authorization.sharing-rules',
+              },
+              action: 'create',
+            },
+            breadcrumb: { title: 'sharingRules.actions.new' },
+            componentLoader: () => import('./sharing-rules/form.js'),
+          },
+          {
+            name: 'settingsSharingRuleEdit',
+            path: 'edit/:key',
+            authz: {
+              resource: {
+                type: 'settings',
+                id: 'authorization.sharing-rules',
+              },
+              action: 'update',
+            },
+            breadcrumb: { title: 'sharingRules.actions.edit' },
+            componentLoader: () => import('./sharing-rules/form.js'),
           },
         ],
       },

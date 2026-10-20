@@ -1,5 +1,6 @@
 import authorizationInspector from './modules/authorization-inspector-zh-CN.js';
 import defaultAccess from './modules/default-access-zh-CN.js';
+import sharingRules from './modules/sharing-rules-zh-CN.js';
 import databaseExplorer from './modules/database-explorer-zh-CN.js';
 import apiKeys from './modules/api-keys-zh-CN.js';
 import templateSettings from './system/settings-zh-CN.js';
@@ -31,6 +32,7 @@ import type { AppResource } from './en-US.js';
 const zhCN: AppResource = {
   authorizationInspector,
   defaultAccess,
+  sharingRules,
   databaseExplorer,
   apiKeys,
   'auth.preparingSession': '正在准备登录会话…',
@@ -1355,6 +1357,7 @@ const zhCN: AppResource = {
     revokeAssignmentFor: '撤销“{{name}}”的角色授权？',
     authorizationInspector: '权限检查器',
     defaultAccess: '默认数据范围',
+    sharingRules: '共享规则',
     databaseExplorer: '数据库浏览器',
     revokeAssignment: '撤销这项角色授权？',
     assignments: '授权对象',

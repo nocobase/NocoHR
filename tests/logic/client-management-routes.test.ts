@@ -325,3 +325,25 @@ it('retains the original inspector path and its native inspect requirement', () 
     componentLoader: expect.any(Function),
   });
 });
+
+it('restores the sharing-rules route with separate read, create and update actions', () => {
+  const routes = flatten(
+    resolveAppClientContributions([
+      { packageName: 'hr', source: 'application', routes: applicationRoutes },
+    ]).routes,
+  );
+  for (const [path, action] of [
+    ['/settings/authorization/sharing-rules', 'read'],
+    ['/settings/authorization/sharing-rules/new', 'create'],
+    ['/settings/authorization/sharing-rules/edit/:key', 'update'],
+  ]) {
+    expect(routes.find((route) => route.path === path)).toMatchObject({
+      auth: 'required',
+      authz: {
+        resource: { type: 'settings', id: 'authorization.sharing-rules' },
+        action,
+      },
+      componentLoader: expect.any(Function),
+    });
+  }
+});
