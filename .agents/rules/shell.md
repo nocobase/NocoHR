@@ -31,3 +31,7 @@ Use `Loading` for page or panel waits and `Spinner` (the shadcn-compatible adapt
 The shared list of shell behaviors to keep when customizing is in [customizing the shell](../skills/nocobase-app-development/references/frontend/references/shell.md).
 
 The signed-in region waits in `client/routing/session-preparation.tsx` before mounting `AppLayout`: the authentication provider first reconnects active realtime subscriptions as the current session and waits for the open notification, including permission invalidation. A ten-second timeout shows a localized retry/sign-out screen. Keep this boundary inside `RequiredAuthentication`; guest login must remain reachable without realtime. Readiness is only for initial session preparation. Subsequent permission notifications and reconnects still use normal fail-closed route unmounting, including portal and effect cleanup.
+
+## Client 3 integration boundary
+
+The single native route tree is partitioned into the retained application, Settings and Dev shells by `client/routing/surfaces.ts`. Keep the old management URLs and resource/action IDs when adding remaining administration surfaces. The [client integration record](../../server/providers/upgrade/client-unit.md) lists verified adapters, closed device composition and remaining capability gaps.

@@ -65,7 +65,9 @@ export default function CollectionFieldsPane(): ReactElement {
         rows={fields.map((field) => [
           field.name,
           field.type,
-          field.nullable ? t('databaseExplorer.labels.yes') : t('databaseExplorer.labels.no'),
+          field.nullable
+            ? t('databaseExplorer.labels.yes')
+            : t('databaseExplorer.labels.no'),
           keyLabel(field, t),
           field.defaultValue ?? '',
           describeTarget(field),

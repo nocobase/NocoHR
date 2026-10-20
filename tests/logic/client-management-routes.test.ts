@@ -297,6 +297,23 @@ it('preserves every existing NocoHR settings URL and resource/action, including 
       resolved.find(
         (route) => route.componentLoader && route.path === entry.path,
       )?.authz,
-      entry.path,
     ).toEqual(entry.authz);
+});
+
+it('retains the original inspector path and its native inspect requirement', () => {
+  const routes = flatten(
+    resolveAppClientContributions([
+      { packageName: 'hr', source: 'application', routes: applicationRoutes },
+    ]).routes,
+  );
+  expect(
+    routes.find((route) => route.path === '/settings/authorization/inspector'),
+  ).toMatchObject({
+    auth: 'required',
+    authz: {
+      resource: { type: 'settings', id: 'authorization.inspector' },
+      action: 'inspect',
+    },
+    componentLoader: expect.any(Function),
+  });
 });

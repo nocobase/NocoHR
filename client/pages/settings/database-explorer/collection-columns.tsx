@@ -65,7 +65,9 @@ export default function CollectionColumnsPane(): ReactElement {
       rows={physicalColumns(physical.value).map((column) => [
         column.columnName,
         column.nativeType,
-        column.nullable ? t('databaseExplorer.labels.yes') : t('databaseExplorer.labels.no'),
+        column.nullable
+          ? t('databaseExplorer.labels.yes')
+          : t('databaseExplorer.labels.no'),
         column.length === undefined ? '' : String(column.length),
         column.collation ?? '',
       ])}

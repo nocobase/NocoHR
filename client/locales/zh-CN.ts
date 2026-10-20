@@ -1,3 +1,4 @@
+import authorizationInspector from './modules/authorization-inspector-zh-CN.js';
 import databaseExplorer from './modules/database-explorer-zh-CN.js';
 import apiKeys from './modules/api-keys-zh-CN.js';
 import templateSettings from './system/settings-zh-CN.js';
@@ -27,6 +28,7 @@ import { payrollOpeningAdditions } from './modules/payroll-opening.js';
 import type { AppResource } from './en-US.js';
 
 const zhCN: AppResource = {
+  authorizationInspector,
   databaseExplorer,
   apiKeys,
   'auth.preparingSession': '正在准备登录会话…',
@@ -1088,6 +1090,8 @@ const zhCN: AppResource = {
     dismissedToast: '已忽略“{{title}}”',
     dismissTitle: '忽略“{{title}}”？',
     dismissDescription: '该提醒将移入已完成，不会改变原业务状态。',
+    previous: '上一页',
+    next: '下一页',
     page: '第 {{page}} 页，共 {{total}} 条',
     noDue: '无期限',
     view: '查看',
@@ -1347,6 +1351,7 @@ const zhCN: AppResource = {
   },
   settings: {
     revokeAssignmentFor: '撤销“{{name}}”的角色授权？',
+    authorizationInspector: '权限检查器',
     databaseExplorer: '数据库浏览器',
     revokeAssignment: '撤销这项角色授权？',
     assignments: '授权对象',

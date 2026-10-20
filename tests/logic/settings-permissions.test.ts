@@ -70,7 +70,9 @@ describe('settings permission drafts', () => {
       scopes: { records: 'all', attachments: { selected: ['file-1'] } },
     });
     expect(next[0]?.actions[1]).toEqual({ action: 'approve' });
-    expect(original[0]?.actions[0]?.policy.scopes.records).toBe('mine');
+    expect(original[0]?.actions[0]?.policy).toMatchObject({
+      scopes: { records: 'mine' },
+    });
   });
 });
 

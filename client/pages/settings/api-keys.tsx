@@ -121,7 +121,9 @@ export default function ApiKeysPage(): ReactElement {
   };
 
   const formatDate = (value: Date | string | null): string =>
-    value ? new Date(value).toLocaleString(i18n.language) : t('apiKeys.page.never');
+    value
+      ? new Date(value).toLocaleString(i18n.language)
+      : t('apiKeys.page.never');
 
   return (
     <PageContainer>
@@ -151,7 +153,9 @@ export default function ApiKeysPage(): ReactElement {
               <TableHead>{t('apiKeys.page.columns.lastUsed')}</TableHead>
               <TableHead>{t('apiKeys.page.columns.expires')}</TableHead>
               <TableHead className='w-14'>
-                <span className='sr-only'>{t('apiKeys.page.columns.actions')}</span>
+                <span className='sr-only'>
+                  {t('apiKeys.page.columns.actions')}
+                </span>
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -278,7 +282,9 @@ function CreateKeyDialog({
         <form onSubmit={submit} className='space-y-4'>
           <DialogHeader>
             <DialogTitle>{t('apiKeys.form.title')}</DialogTitle>
-            <DialogDescription>{t('apiKeys.form.description')}</DialogDescription>
+            <DialogDescription>
+              {t('apiKeys.form.description')}
+            </DialogDescription>
           </DialogHeader>
           <div className='space-y-2'>
             <Label htmlFor='api-key-name'>{t('apiKeys.form.name')}</Label>

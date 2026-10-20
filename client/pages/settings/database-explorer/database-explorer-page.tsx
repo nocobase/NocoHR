@@ -141,7 +141,10 @@ export default function DatabaseExplorerPage(): ReactElement {
 
   return (
     <PageContainer>
-      <PageHeader title={t('databaseExplorer.page.title')} description={t('databaseExplorer.page.description')} />
+      <PageHeader
+        title={t('databaseExplorer.page.title')}
+        description={t('databaseExplorer.page.description')}
+      />
 
       {connections.error ? (
         <Notice tone='destructive'>{message(connections.error)}</Notice>
@@ -149,7 +152,9 @@ export default function DatabaseExplorerPage(): ReactElement {
 
       <div className='grid grid-cols-1 gap-4 lg:grid-cols-[16rem_18rem_minmax(0,1fr)]'>
         <Panel label={t('databaseExplorer.sections.connections')}>
-          <SectionTitle>{t('databaseExplorer.sections.connections')}</SectionTitle>
+          <SectionTitle>
+            {t('databaseExplorer.sections.connections')}
+          </SectionTitle>
           <ul className='min-h-0 flex-1 overflow-y-auto p-2'>
             {items.map((item: ConnectionSummary) => (
               <li key={item.name}>
@@ -165,8 +170,14 @@ export default function DatabaseExplorerPage(): ReactElement {
                   </span>
                   <span className='mt-1 flex flex-wrap gap-1'>
                     <Tag>{item.dialect}</Tag>
-                    <Tag>{t(`databaseExplorer.schemaManagement.${item.schemaManagement}`)}</Tag>
-                    {item.isDefault ? <Tag>{t('databaseExplorer.labels.default')}</Tag> : null}
+                    <Tag>
+                      {t(
+                        `databaseExplorer.schemaManagement.${item.schemaManagement}`,
+                      )}
+                    </Tag>
+                    {item.isDefault ? (
+                      <Tag>{t('databaseExplorer.labels.default')}</Tag>
+                    ) : null}
                   </span>
                 </button>
               </li>
@@ -182,7 +193,9 @@ export default function DatabaseExplorerPage(): ReactElement {
         </Panel>
 
         <Panel label={t('databaseExplorer.sections.collections')}>
-          <SectionTitle>{t('databaseExplorer.sections.collections')}</SectionTitle>
+          <SectionTitle>
+            {t('databaseExplorer.sections.collections')}
+          </SectionTitle>
           <div className='border-b border-border p-2'>
             <div className='flex items-center gap-2 rounded-md border border-input px-2'>
               <Search aria-hidden className='size-4 text-muted-foreground' />
@@ -198,7 +211,9 @@ export default function DatabaseExplorerPage(): ReactElement {
           </div>
           {collections.value?.truncated ? (
             <div className='px-2 pt-2'>
-              <Notice tone='warning'>{t('databaseExplorer.states.truncated')}</Notice>
+              <Notice tone='warning'>
+                {t('databaseExplorer.states.truncated')}
+              </Notice>
             </div>
           ) : null}
           <ul className='min-h-0 flex-1 overflow-y-auto p-2'>

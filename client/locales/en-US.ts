@@ -1,3 +1,4 @@
+import authorizationInspector from './modules/authorization-inspector-en-US.js';
 import databaseExplorer from './modules/database-explorer-en-US.js';
 import apiKeys from './modules/api-keys-en-US.js';
 import templateSettings from './system/settings-en-US.js';
@@ -27,6 +28,7 @@ import { payrollOpeningAdditions } from './modules/payroll-opening.js';
 import type { LocaleResource } from '@nocobase/i18n';
 
 const enUS = {
+  authorizationInspector,
   databaseExplorer,
   apiKeys,
   'auth.preparingSession': 'Preparing your session…',
@@ -1194,6 +1196,8 @@ const enUS = {
     dismissTitle: 'Dismiss "{{title}}"?',
     dismissDescription:
       'Move this reminder to Completed without changing the original business record.',
+    previous: 'Previous',
+    next: 'Next',
     page: 'Page {{page}}, {{total}} items',
     noDue: 'No deadline',
     view: 'View',
@@ -1466,6 +1470,7 @@ const enUS = {
   },
   settings: {
     revokeAssignmentFor: 'Revoke role for “{{name}}”?',
+    authorizationInspector: 'Permission inspector',
     databaseExplorer: 'Database explorer',
     revokeAssignment: 'Revoke this role assignment?',
     assignments: 'Assignments',

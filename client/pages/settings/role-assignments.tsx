@@ -44,7 +44,8 @@ function AssignmentEditor() {
     `authorization/permissionSets/${encodeURIComponent(key)}/assignments`,
   );
   const canAssign = useRolePermission('assign');
-  const canRevoke = useRolePermission('revoke');
+  // Native assignment deletion requires assign; role protection separately names revoke.
+  const canRevoke = canAssign;
   const [kind, setKind] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);

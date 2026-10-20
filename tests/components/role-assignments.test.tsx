@@ -30,7 +30,20 @@ async function mount(allow: boolean, protectedRole = false) {
       json?: unknown;
     }) => {
       if (path === 'authorization/permissions')
-        return { data: { unrestricted: allow, permissions: [] } };
+        return {
+          data: {
+            unrestricted: false,
+            permissions: [
+              {
+                resource: {
+                  type: 'settings',
+                  id: 'authorization.permission-sets',
+                },
+                actions: allow ? ['read', 'assign'] : ['read'],
+              },
+            ],
+          },
+        };
       if (path.endsWith('/options'))
         return {
           data: {
@@ -69,7 +82,13 @@ async function mount(allow: boolean, protectedRole = false) {
           key: 'operators',
           grants: [],
           ...(protectedRole
-            ? { protection: { owner: 'test', allow: [], assignableTo: [] } }
+            ? {
+                protection: {
+                  owner: 'test',
+                  allow: ['assign'],
+                  assignableTo: ['authenticated'],
+                },
+              }
             : {}),
         },
       };
@@ -103,6 +122,7 @@ it('restores the old URL, displays resolved subjects and uses the native assign/
   const user = userEvent.setup();
   const calls = await mount(true);
   expect(await screen.findByText('Alice')).toBeVisible();
+  expect(await screen.findByRole('button', { name: 'Assign' })).toBeVisible();
   await user.click(screen.getByRole('button', { name: 'Revoke' }));
   await user.click(await screen.findByRole('button', { name: 'Revoke' }));
   await waitFor(() =>
@@ -125,16 +145,19 @@ it.each([
   { allow: false, protectedRole: false },
   { allow: true, protectedRole: true },
 ])(
-  'retains readable assignments without mutation controls: %j',
+  'retains assignment permission and the separate role revoke protection: %j',
   async ({ allow, protectedRole }) => {
     const calls = await mount(allow, protectedRole);
     expect(await screen.findByText('Alice')).toBeVisible();
     expect(
       screen.queryByRole('button', { name: 'Revoke' }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Assign' }),
-    ).not.toBeInTheDocument();
+    if (allow)
+      expect(screen.getByRole('button', { name: 'Assign' })).toBeVisible();
+    else
+      expect(
+        screen.queryByRole('button', { name: 'Assign' }),
+      ).not.toBeInTheDocument();
     expect(
       calls.mock.calls.filter(
         ([call]) =>

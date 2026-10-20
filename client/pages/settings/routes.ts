@@ -1,4 +1,10 @@
-import { Database, Settings, Users, ShieldCheck } from 'lucide-react';
+import {
+  Database,
+  Settings,
+  Users,
+  ShieldCheck,
+  ScanSearch,
+} from 'lucide-react';
 import {
   defineAppRoutes,
   type AppClientRouteContribution,
@@ -82,6 +88,22 @@ const systemSettingsRoutes: AppClientRouteContribution = defineAppRoutes([
             ],
           },
         ],
+      },
+      {
+        name: 'settingsAuthorizationInspector',
+        path: '/authorization/inspector',
+        auth: 'required',
+        authz: {
+          resource: { type: 'settings', id: 'authorization.inspector' },
+          action: 'inspect',
+        },
+        navigation: {
+          title: 'settings.authorizationInspector',
+          icon: ScanSearch,
+          order: 1000,
+        },
+        breadcrumb: { title: 'settings.authorizationInspector' },
+        componentLoader: () => import('./inspector/index.js'),
       },
       {
         name: 'settingsRoles',
