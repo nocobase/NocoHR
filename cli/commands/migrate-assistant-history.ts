@@ -117,7 +117,7 @@ export default class MigrateAssistantHistory extends AppCommand {
                 import('@nocobase/app-plugin-authorization/server'),
                 import('../../server/providers/hr/authorize.js'),
               ]);
-            return (
+            const effect = String(
               (
                 await (
                   await scopeForUser(
@@ -128,8 +128,9 @@ export default class MigrateAssistantHistory extends AppCommand {
                   resource: { type: 'page', id: 'ai.settings' },
                   action: 'access',
                 })
-              ).effect === 'allow'
+              ).effect,
             );
+            return effect === 'allow' || effect === 'permit';
           },
         );
         return flags.configuration

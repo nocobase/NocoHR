@@ -8,6 +8,8 @@ import { username } from 'better-auth/plugins';
 
 const auth: AppConfigFactory<AuthConfig> = defineAuthConfig({
   defaults: {
+    // Device authorization and its browser approval page must be merged together.
+    // Keep the existing login surface until the retained-plugin integration can run.
     plugins: [username({ displayUsername: false }), apiKey()],
     // Self-registration is off: NocoHR accounts come from the initial administrator, the directory sync and HR's
     // 开通账号 (all server-side, through the Users service, which this does not affect). An open sign-up let anyone
@@ -15,6 +17,7 @@ const auth: AppConfigFactory<AuthConfig> = defineAuthConfig({
     // /login while this is true; set `auth.emailAndPassword.disableSignUp: false` in config.yml to reopen it.
     emailAndPassword: { enabled: true, autoSignIn: false, disableSignUp: true },
     session: { storeSessionInDatabase: true },
+    account: { encryptOAuthTokens: true },
   },
 });
 

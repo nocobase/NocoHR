@@ -38,6 +38,14 @@ users:
     email: admin@nocobase.com # stored lowercase; also signs in
     password: admin123
 
+# The target CLI replaces this placeholder when creating a fresh config.yml.
+# Existing deployments retain their original keyring; do not replace it during a source merge.
+# SECRETS_KEYS supplies the keyring from deployment secrets, current key first.
+secrets:
+  keys:
+    - version: 1
+      key: replace-with-a-unique-secret
+
 auth:
   # Generate a unique secret, for example with: openssl rand -hex 32
   secret: replace-with-a-unique-secret

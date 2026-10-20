@@ -4,7 +4,7 @@
 allowBuilds:
   better-sqlite3: true
   esbuild: true
-  msgpackr-extract: set this to true or false
+  msgpackr-extract: true
   oracledb: true
   # @larksuiteoapi/node-sdk: its install script only prints a version notice.
   protobufjs: false

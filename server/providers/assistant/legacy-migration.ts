@@ -9,7 +9,6 @@ import { z } from 'zod';
 import type { AIEmployeeOptions, RegisteredTool } from '../../ai/contracts.js';
 import { copyCapabilityRecord } from '../upgrade/ledger.js';
 import { capabilityJsonValue } from '../upgrade/json-value.js';
-import { capabilityRecordDigest } from '../upgrade/digest.js';
 import {
   legacySource,
   legacyId,
@@ -614,9 +613,10 @@ export class LegacyAssistantMigration {
       const pending = mappedCalls.filter(
         (call) => call.values.status === 'pending',
       );
-      const lastAI = mappedMessages.findLast((entry) =>
-        AIMessage.isInstance(entry.message),
-      );
+      const lastAI = mappedMessages
+        .slice()
+        .reverse()
+        .find((entry) => AIMessage.isInstance(entry.message));
       if (pending.some((call) => call.values.messageId !== lastAI?.message.id))
         throw new Error('UNMAPPED_TOOL_STATE');
       const pendingGroup =

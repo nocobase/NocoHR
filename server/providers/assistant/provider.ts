@@ -46,7 +46,9 @@ export default class AssistantProvider extends ServiceProvider<Application> {
         resource: { type: 'composite', id: 'talent.aiAssistant' },
         action: 'use',
       });
-      if (decision.effect !== 'allow') throw new Error('ASSISTANT_FORBIDDEN');
+      const effect = String(decision.effect);
+      if (effect !== 'allow' && effect !== 'permit')
+        throw new Error('ASSISTANT_FORBIDDEN');
     };
     container.singleton(
       assistantConversationsToken,
@@ -95,18 +97,22 @@ export default class AssistantProvider extends ServiceProvider<Application> {
                   .use(file.disk)
                   .getStream(file.path)) as Readable,
               ) as ReadableStream<Uint8Array>,
-            canReadAnyFile: async (actor) =>
-              (
-                await (
-                  await scopeForUser(
-                    container.resolve(authorizationToken),
-                    String(actor.id),
-                  )
-                ).authorize({
-                  resource: { type: 'page', id: 'ai.settings' },
-                  action: 'access',
-                })
-              ).effect === 'allow',
+            canReadAnyFile: async (actor) => {
+              const effect = String(
+                (
+                  await (
+                    await scopeForUser(
+                      container.resolve(authorizationToken),
+                      String(actor.id),
+                    )
+                  ).authorize({
+                    resource: { type: 'page', id: 'ai.settings' },
+                    action: 'access',
+                  })
+                ).effect,
+              );
+              return effect === 'allow' || effect === 'permit';
+            },
           },
         ),
     );
