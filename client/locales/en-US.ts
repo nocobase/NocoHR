@@ -1,3 +1,7 @@
+import databaseExplorer from './modules/database-explorer-en-US.js';
+import apiKeys from './modules/api-keys-en-US.js';
+import templateSettings from './system/settings-en-US.js';
+import deviceApproval from '#extensions/nocobase-device-approval/locales/en-US';
 import { coreHrAdditions } from './modules/core-hr-additions.js';
 // V3-10
 import { examAdditions } from './modules/exam-additions.js';
@@ -23,6 +27,15 @@ import { payrollOpeningAdditions } from './modules/payroll-opening.js';
 import type { LocaleResource } from '@nocobase/i18n';
 
 const enUS = {
+  databaseExplorer,
+  apiKeys,
+  'auth.preparingSession': 'Preparing your session…',
+  'auth.connectionFailed': 'Unable to connect',
+  'auth.connectionFailedDescription':
+    'The realtime connection could not be prepared. Retry to enter the application, or sign out.',
+  'auth.retry': 'Retry',
+
+  ...deviceApproval,
   // AI chat tool-call cards (client/extensions/nocobase-ai/components/chat/tool-call-card.tsx).
   aiTools: aiToolNames.en,
   // V1-02 additions (client/locales/modules/core-hr-additions.ts).
@@ -1181,8 +1194,6 @@ const enUS = {
     dismissTitle: 'Dismiss "{{title}}"?',
     dismissDescription:
       'Move this reminder to Completed without changing the original business record.',
-    previous: 'Previous',
-    next: 'Next',
     page: 'Page {{page}}, {{total}} items',
     noDue: 'No deadline',
     view: 'View',
@@ -1454,6 +1465,18 @@ const enUS = {
     page: '{{title}} page',
   },
   settings: {
+    revokeAssignmentFor: 'Revoke role for “{{name}}”?',
+    databaseExplorer: 'Database explorer',
+    revokeAssignment: 'Revoke this role assignment?',
+    assignments: 'Assignments',
+    revoke: 'Revoke',
+    assign: 'Assign',
+    subjectType: 'Subject type',
+    subjectSearch: 'Search people or teams',
+    subject: 'Subject',
+
+    ...templateSettings,
+    apiKeys: 'API keys',
     title: 'Settings',
     emptyTitle: 'No settings available',
     emptyDescription:

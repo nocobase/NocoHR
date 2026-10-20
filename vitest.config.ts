@@ -4,7 +4,7 @@ import { createReactVitestConfig } from '@nocobase/dev-config/vitest/react';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 
-export default createReactVitestConfig({
+const config = createReactVitestConfig({
   resolve: {
     alias: [
       {
@@ -41,3 +41,13 @@ export default createReactVitestConfig({
     },
   },
 });
+
+// Keep the preset setup inside the application's module graph. An absolute setup
+// path outside the root (linked/shared packages) becomes /@fs/... under jsdom.
+export default {
+  ...config,
+  test: {
+    ...config.test,
+    setupFiles: ['./tests/setup/react.ts', './tests/setup/client-config.ts'],
+  },
+};

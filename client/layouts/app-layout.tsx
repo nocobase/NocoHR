@@ -1,11 +1,12 @@
 import { useSyncServerLocale } from '@nocobase/app-plugin-i18n/client';
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import type { AppClientRegisteredRoute } from '@nocobase/app-client/plugins';
 import { Outlet, useLocation } from 'react-router';
 
 import { RouteTreeProvider } from '../routing/route-context.js';
 
 import { useClientApplication } from '@nocobase/app-client';
+import { surfaceRoutes } from '../routing/surfaces.js';
 import { useTranslation } from '@nocobase/i18n/client';
 import { LayoutHeader } from './components/layout-header.js';
 import {
@@ -39,9 +40,12 @@ export function AppLayout({
     useLocation().pathname,
     denied,
   );
-  const settingsNavigation = useRouteNavigation(
-    useClientApplication().runtime.settingsRouteTree,
+  const runtimeRoutes = useClientApplication().runtime.routes;
+  const settingsTree = useMemo(
+    () => surfaceRoutes(runtimeRoutes, 'settings'),
+    [runtimeRoutes],
   );
+  const settingsNavigation = useRouteNavigation(settingsTree);
   const navigationLabel = t('navigation.label', {
     defaultValue: 'Application navigation',
   });
