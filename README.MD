@@ -379,7 +379,7 @@ Tests live in `tests/`, never beside the source they cover. Put logic and integr
 
 The notification logs settings page is read-only: it shows delivery records and attempts, including historical test sends, with refresh and expandable details. NocoHR replaces only the logs component in the installed legacy plugin's route contribution (`client/pages/notifications/plugin.ts`), preserving its settings navigation and `page:notification.logs` access permission. This framework version's `routeComponentOverrides` supports app routes only. Provider identities come from the recorded delivery, so old or removed channels remain readable.
 
-Verify delivery through a business flow or a server-side command using `notificationServiceToken.send()` with complete messages and explicit recipients. The application does not use the plugin's generic test form or test endpoints. Upgrade the pinned framework and notification packages together when adopting the release that removes those server APIs; remove this compatibility wrapper when migrating to an application-owned logs route.
+Verify delivery through a business flow or a server-side command that resolves `notificationServiceToken` and calls `notification.send()` with complete messages and explicit recipients. The application does not use the plugin's generic test form or test endpoints. Upgrade the pinned framework and notification packages together when adopting the release that removes those server APIs; remove this compatibility wrapper when migrating to an application-owned logs route.
 
 ## API documentation
 
