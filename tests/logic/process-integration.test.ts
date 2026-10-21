@@ -1470,6 +1470,20 @@ it.each([
 
       const terminalStatus: ScheduleExecutionCompletion['status'] =
         status === 'succeeded' ? 'succeeded' : 'failed';
+      const recoveredOccurrences = await costs(
+        'native occurrence state immediately after recovery',
+        () => restartedScheduler.listOccurrences(scheduled[0]!.name),
+      );
+      expect(recoveredOccurrences).toHaveLength(1);
+      expect(recoveredOccurrences[0]).toMatchObject({
+        id: occurrenceId,
+        status,
+      });
+      expect(recoveredOccurrences[0]!.target.reference).toEqual(reference);
+      expect(checkExecutions).toBe(1);
+      expect(f.counts.work).toBe(work);
+      expect(restartedEnqueues).toBe(0);
+
       const expected: ScheduleExecutionCompletion = {
         status: terminalStatus,
         result: {
@@ -1547,7 +1561,12 @@ it.each([
         'native occurrence state after late and invalid reports',
         () => restartedScheduler.listOccurrences(scheduled[0]!.name),
       );
-      expect(finalOccurrences.map((item) => item.status)).toEqual([status]);
+      expect(finalOccurrences).toHaveLength(1);
+      expect(finalOccurrences[0]).toMatchObject({
+        id: occurrenceId,
+        status,
+      });
+      expect(finalOccurrences[0]!.target.reference).toEqual(reference);
       expect(restartedEnqueues).toBe(0);
       expect(checkExecutions).toBe(1);
       expect(f.counts.work).toBe(work);
