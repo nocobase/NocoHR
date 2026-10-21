@@ -6,13 +6,11 @@ import type {
   UpdateToolCallDecisionOptions,
 } from './types.js';
 
-/** Enabled applications own legacy reads and copied sessions; no retired plugin request is required. */
+/** Application APIs own both new conversations and retained history. Disabled runtimes fail explicitly. */
 export class RuntimeAIService implements AIService {
-  private readonly legacy: NocoBaseAIService;
   private readonly application: NocoBaseAIService;
   private enabled?: Promise<boolean>;
   public constructor(private readonly client: ApiClient) {
-    this.legacy = new NocoBaseAIService(client);
     this.application = new NocoBaseAIService(client, (path) =>
       path
         .replace(/^aiEmployee\/conversations/u, 'assistantConversations')
@@ -34,13 +32,8 @@ export class RuntimeAIService implements AIService {
       })
       .then((value) => value.data.enabled));
   }
-  private async service(id?: string) {
-    const enabled = await this.isEnabled();
-    if (!enabled) {
-      if (id?.startsWith('assistant-'))
-        throw new Error('ASSISTANT_UNAVAILABLE');
-      return this.legacy;
-    }
+  private async service() {
+    if (!(await this.isEnabled())) throw new Error('ASSISTANT_UNAVAILABLE');
     return this.application;
   }
 
@@ -51,58 +44,56 @@ export class RuntimeAIService implements AIService {
     return (await this.service()).listModels();
   }
   async listConversations(keyword?: string) {
-    if (!(await this.isEnabled()))
-      return this.legacy.listConversations(keyword);
-    return this.application.listConversations(keyword);
+    return (await this.service()).listConversations(keyword);
   }
 
   async getConversationMessages(
     id: string,
     options?: { updateRead?: boolean },
   ) {
-    return (await this.service(id)).getConversationMessages(id, options);
+    return (await this.service()).getConversationMessages(id, options);
   }
   async getConversationActiveState(id: string) {
-    return (await this.service(id)).getConversationActiveState(id);
+    return (await this.service()).getConversationActiveState(id);
   }
 
   async updateConversationTitle(id: string, title: string) {
-    return (await this.service(id)).updateConversationTitle(id, title);
+    return (await this.service()).updateConversationTitle(id, title);
   }
   async destroyConversation(id: string) {
-    return (await this.service(id)).destroyConversation(id);
+    return (await this.service()).destroyConversation(id);
   }
   async createConversation(options: CreateAIConversationOptions) {
     return (await this.service()).createConversation(options);
   }
   async sendMessagesStream(body: unknown, signal?: AbortSignal) {
-    return (await this.service(this.sessionId(body))).sendMessagesStream(
-      body,
-      signal,
-    );
+    this.sessionId(body);
+    return (await this.service()).sendMessagesStream(body, signal);
   }
   async resumeToolCallStream(body: unknown, signal?: AbortSignal) {
-    return (await this.service(this.sessionId(body))).resumeToolCallStream(
-      body,
-      signal,
-    );
+    this.sessionId(body);
+    return (await this.service()).resumeToolCallStream(body, signal);
   }
   async updateToolCallDecision(options: UpdateToolCallDecisionOptions) {
-    return (await this.service(options.sessionId)).updateToolCallDecision(
-      options,
-    );
+    return (await this.service()).updateToolCallDecision(options);
   }
-  async resendMessagesStream(body: unknown, signal?: AbortSignal) {
-    if (await this.isEnabled()) throw new Error('UNSUPPORTED_CHAT_REQUEST');
-    return this.legacy.resendMessagesStream(body, signal);
+  async resendMessagesStream(
+    _body: unknown,
+    _signal?: AbortSignal,
+  ): Promise<never> {
+    await this.service();
+    throw new Error('UNSUPPORTED_CHAT_REQUEST');
   }
-  async resumeConversationStream(id: string, signal?: AbortSignal) {
-    if (await this.isEnabled()) throw new Error('UNSUPPORTED_CHAT_REQUEST');
-    return this.legacy.resumeConversationStream(id, signal);
+  async resumeConversationStream(
+    _id: string,
+    _signal?: AbortSignal,
+  ): Promise<never> {
+    await this.service();
+    throw new Error('UNSUPPORTED_CHAT_REQUEST');
   }
-  async uploadFile(file: File, signal?: AbortSignal) {
-    if (await this.isEnabled()) throw new Error('UNSUPPORTED_CHAT_REQUEST');
-    return this.legacy.uploadFile(file, signal);
+  async uploadFile(_file: File, _signal?: AbortSignal): Promise<never> {
+    await this.service();
+    throw new Error('UNSUPPORTED_CHAT_REQUEST');
   }
   async updateEmployeeUserPrompt(username: string, prompt: string) {
     return (await this.service()).updateEmployeeUserPrompt(username, prompt);
