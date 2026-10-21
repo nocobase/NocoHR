@@ -1,6 +1,7 @@
 import authorizationInspector from './modules/authorization-inspector-zh-CN.js';
 import defaultAccess from './modules/default-access-zh-CN.js';
 import sharingRules from './modules/sharing-rules-zh-CN.js';
+import restrictionRules from './modules/restriction-rules-zh-CN.js';
 import databaseExplorer from './modules/database-explorer-zh-CN.js';
 import apiKeys from './modules/api-keys-zh-CN.js';
 import templateSettings from './system/settings-zh-CN.js';
@@ -33,6 +34,7 @@ const zhCN: AppResource = {
   authorizationInspector,
   defaultAccess,
   sharingRules,
+  restrictionRules,
   databaseExplorer,
   apiKeys,
   'auth.preparingSession': '正在准备登录会话…',

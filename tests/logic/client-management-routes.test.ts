@@ -347,3 +347,25 @@ it('restores the sharing-rules route with separate read, create and update actio
     });
   }
 });
+
+it('restores the restriction-rules route with separate read, create and update actions', () => {
+  const routes = flatten(
+    resolveAppClientContributions([
+      { packageName: 'hr', source: 'application', routes: applicationRoutes },
+    ]).routes,
+  );
+  for (const [path, action] of [
+    ['/settings/authorization/restriction-rules', 'read'],
+    ['/settings/authorization/restriction-rules/new', 'create'],
+    ['/settings/authorization/restriction-rules/edit/:key', 'update'],
+  ]) {
+    expect(routes.find((route) => route.path === path)).toMatchObject({
+      auth: 'required',
+      authz: {
+        resource: { type: 'settings', id: 'authorization.restriction-rules' },
+        action,
+      },
+      componentLoader: expect.any(Function),
+    });
+  }
+});

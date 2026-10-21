@@ -6,6 +6,7 @@ import {
   ScanSearch,
   LockKeyhole,
   Share2,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   defineAppRoutes,
@@ -132,6 +133,50 @@ const systemSettingsRoutes: AppClientRouteContribution = defineAppRoutes([
             },
             breadcrumb: { title: 'sharingRules.actions.edit' },
             componentLoader: () => import('./sharing-rules/form.js'),
+          },
+        ],
+      },
+      {
+        name: 'settingsRestrictionRules',
+        path: '/authorization/restriction-rules',
+        auth: 'required',
+        authz: {
+          resource: { type: 'settings', id: 'authorization.restriction-rules' },
+          action: 'read',
+        },
+        navigation: {
+          title: 'restrictionRules.page.title',
+          icon: ShieldAlert,
+          order: 985,
+        },
+        breadcrumb: { title: 'restrictionRules.page.title' },
+        componentLoader: () => import('./restriction-rules/index.js'),
+        children: [
+          {
+            name: 'settingsRestrictionRuleCreate',
+            path: 'new',
+            authz: {
+              resource: {
+                type: 'settings',
+                id: 'authorization.restriction-rules',
+              },
+              action: 'create',
+            },
+            breadcrumb: { title: 'restrictionRules.actions.new' },
+            componentLoader: () => import('./restriction-rules/form.js'),
+          },
+          {
+            name: 'settingsRestrictionRuleEdit',
+            path: 'edit/:key',
+            authz: {
+              resource: {
+                type: 'settings',
+                id: 'authorization.restriction-rules',
+              },
+              action: 'update',
+            },
+            breadcrumb: { title: 'restrictionRules.actions.edit' },
+            componentLoader: () => import('./restriction-rules/form.js'),
           },
         ],
       },

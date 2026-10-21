@@ -1,6 +1,7 @@
 import authorizationInspector from './modules/authorization-inspector-en-US.js';
 import defaultAccess from './modules/default-access-en-US.js';
 import sharingRules from './modules/sharing-rules-en-US.js';
+import restrictionRules from './modules/restriction-rules-en-US.js';
 import databaseExplorer from './modules/database-explorer-en-US.js';
 import apiKeys from './modules/api-keys-en-US.js';
 import templateSettings from './system/settings-en-US.js';
@@ -33,6 +34,7 @@ const enUS = {
   authorizationInspector,
   defaultAccess,
   sharingRules,
+  restrictionRules,
   databaseExplorer,
   apiKeys,
   'auth.preparingSession': 'Preparing your session…',
