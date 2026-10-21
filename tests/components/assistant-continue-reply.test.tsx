@@ -78,17 +78,34 @@ function actionFixture() {
   const chat = {
     id: 'assistant-session',
     status: 'ready',
+    error: undefined as Error | undefined,
     messages: [message()],
     resumeStream: vi.fn<() => Promise<void>>(async () => undefined),
+    regenerate: vi.fn<() => Promise<void>>(async () => undefined),
   };
-  const transport = { prepareToolResume: vi.fn(), cancelToolResume: vi.fn() };
+  const otherChat = {
+    id: 'other-conversation',
+    status: 'ready',
+    messages: [message('output-error')],
+    resumeStream: vi.fn<() => Promise<void>>(async () => undefined),
+  };
+  const transport = {
+    prepareToolResume: vi.fn(),
+    cancelToolResume: vi.fn(),
+    prepareResend: vi.fn(),
+    cancelResend: vi.fn(),
+  };
   const ai = { updateToolCallDecision: vi.fn(), invokeToolCall: vi.fn() };
   const setError = vi.fn();
+  const stateRef = { current: { activeConversationId: chat.id } };
+  const actionTokenRef = { current: new Map<string, symbol>() };
   const options = {
     ai,
     activeChat: chat,
-    getChat: () => chat,
-    stateRef: { current: { activeConversationId: chat.id } },
+    getChat: (conversationId: string) =>
+      (conversationId === chat.id ? chat : otherChat) as never,
+    stateRef,
+    actionTokenRef,
     chatSurfaceOpenRef: { current: true },
     transportsRef: { current: new Map([[chat.id, transport]]) },
     getRuntimeContext: () => ({ employeeUsername: 'employee' }),
@@ -103,8 +120,48 @@ function actionFixture() {
     dispatch: vi.fn(),
     requestComposerFocus: vi.fn(),
   } as unknown as Parameters<typeof useChatMessageActions>[0];
-  return { chat, transport, ai, setError, options };
+  return {
+    chat,
+    otherChat,
+    transport,
+    ai,
+    setError,
+    stateRef,
+    actionTokenRef,
+    options,
+  };
 }
+
+const decide = (
+  decideToolCall: ReturnType<typeof useChatMessageActions>['decideToolCall'],
+) =>
+  decideToolCall({
+    messageId: 'saved-message',
+    toolCallId: 'saved-call',
+    toolName: 'action',
+    decision: 'approve',
+  });
+
+const makeDecisionContinue = (f: ReturnType<typeof actionFixture>) => {
+  f.ai.updateToolCallDecision.mockImplementation(
+    async () =>
+      ({
+        updated: true,
+        toolCalls: [
+          {
+            id: 'saved-call',
+            name: 'action',
+            args: {},
+            willInterrupt: true,
+            execution: 'frontend',
+            auto: false,
+            invokeStatus: 'waiting',
+          },
+        ],
+      }) as never,
+  );
+  f.ai.invokeToolCall.mockImplementation(async () => ({ handled: false }));
+};
 
 describe('saved tool decision continuation', () => {
   it('offers an explicit page action after reopen without executing or deciding a tool', async () => {
@@ -297,6 +354,190 @@ describe('saved tool decision continuation', () => {
     );
     expect(f.ai.invokeToolCall).not.toHaveBeenCalled();
   });
+
+  it.each(['decision', 'continue'] as const)(
+    'removes only an empty placeholder when %s continuation fails',
+    async (kind) => {
+      const f = actionFixture();
+      if (kind === 'decision') makeDecisionContinue(f);
+      else f.chat.messages = [message('output-error')];
+      const before = [...f.chat.messages];
+      const failure = new Error('CHAT_REQUEST_CONFLICT');
+      f.chat.resumeStream.mockRejectedValue(failure);
+      const { result } = renderHook(() => useChatMessageActions(f.options));
+
+      if (kind === 'decision') {
+        await expect(
+          act(() => decide(result.current.decideToolCall)),
+        ).rejects.toBe(failure);
+      } else {
+        await act(() => result.current.continueReply());
+      }
+
+      expect(f.chat.messages).toEqual(before);
+      expect(f.transport.cancelToolResume).toHaveBeenCalledWith(
+        'saved-message',
+      );
+      expect(f.setError).toHaveBeenLastCalledWith(failure);
+    },
+  );
+
+  it.each(['decision', 'continue'] as const)(
+    'preserves a partial reply when %s continuation fails',
+    async (kind) => {
+      const f = actionFixture();
+      if (kind === 'decision') makeDecisionContinue(f);
+      else f.chat.messages = [message('output-error')];
+      const failure = new Error('STREAM_DISCONNECTED');
+      f.chat.resumeStream.mockImplementation(async () => {
+        f.chat.messages.at(-1)!.parts = [
+          { type: 'text', text: 'Partial reply' },
+          {
+            type: 'dynamic-tool',
+            toolName: 'action',
+            toolCallId: 'completed-call',
+            state: 'output-available',
+            input: {},
+            output: { value: 42 },
+          } as AIChatMessage['parts'][number],
+        ];
+        f.chat.status = 'error';
+        f.chat.error = failure;
+      });
+      const { result } = renderHook(() => useChatMessageActions(f.options));
+
+      if (kind === 'decision') {
+        await expect(
+          act(() => decide(result.current.decideToolCall)),
+        ).rejects.toBe(failure);
+      } else {
+        await act(() => result.current.continueReply());
+      }
+
+      expect(f.chat.messages.at(-1)?.parts).toEqual([
+        { type: 'text', text: 'Partial reply' },
+        expect.objectContaining({
+          type: 'dynamic-tool',
+          toolCallId: 'completed-call',
+          output: { value: 42 },
+        }),
+      ]);
+      expect(f.setError).toHaveBeenLastCalledWith(failure);
+    },
+  );
+
+  it.each(['decision', 'continue'] as const)(
+    'keeps a late %s failure out of the newly selected conversation',
+    async (kind) => {
+      const f = actionFixture();
+      if (kind === 'decision') makeDecisionContinue(f);
+      else f.chat.messages = [message('output-error')];
+      let rejectResume!: (error: Error) => void;
+      f.chat.resumeStream.mockImplementation(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectResume = reject;
+          }),
+      );
+      const { result } = renderHook(() => useChatMessageActions(f.options));
+      const pending =
+        kind === 'decision'
+          ? decide(result.current.decideToolCall)
+          : result.current.continueReply();
+      await waitFor(() => expect(f.chat.resumeStream).toHaveBeenCalledTimes(1));
+
+      f.stateRef.current.activeConversationId = 'other-conversation';
+      f.actionTokenRef.current.set(f.chat.id, Symbol(f.chat.id));
+      const failure = new Error('OLD_CONVERSATION_FAILED');
+      await act(async () => {
+        rejectResume(failure);
+        await pending;
+      });
+
+      expect(f.setError.mock.calls.filter(([error]) => error)).toEqual([]);
+      expect(f.otherChat.messages).toEqual([message('output-error')]);
+      expect(f.chat.messages).toEqual([
+        message(kind === 'decision' ? 'output-available' : 'output-error'),
+      ]);
+    },
+  );
+
+  it.each(['decision', 'continue'] as const)(
+    'ignores a stale %s failure after a newer same-conversation action',
+    async (kind) => {
+      const f = actionFixture();
+      if (kind === 'decision') makeDecisionContinue(f);
+      else f.chat.messages = [message('output-error')];
+      let rejectResume!: (error: Error) => void;
+      f.chat.resumeStream.mockImplementation(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectResume = reject;
+          }),
+      );
+      const latestReply: AIChatMessage = {
+        id: 'latest-reply',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Newer reply' }],
+      };
+      f.chat.regenerate.mockImplementation(async () => {
+        f.chat.messages = [...f.chat.messages, latestReply];
+      });
+      const { result } = renderHook(() => useChatMessageActions(f.options));
+      const pending =
+        kind === 'decision'
+          ? decide(result.current.decideToolCall)
+          : result.current.continueReply();
+      await waitFor(() => expect(f.chat.resumeStream).toHaveBeenCalledTimes(1));
+
+      await act(() => result.current.retryMessage(message('output-error')));
+      const failure = new Error('OLD_OPERATION_FAILED');
+      await act(async () => {
+        rejectResume(failure);
+        await pending;
+      });
+
+      expect(f.chat.messages).toContainEqual(latestReply);
+      expect(f.setError.mock.calls.filter(([error]) => error)).toEqual([]);
+      expect(f.transport.cancelToolResume).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['decision', 'continue'] as const)(
+    'does not mistake a newer same-conversation error for a late %s result',
+    async (kind) => {
+      const f = actionFixture();
+      if (kind === 'decision') makeDecisionContinue(f);
+      else f.chat.messages = [message('output-error')];
+      let resolveResume!: () => void;
+      f.chat.resumeStream.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveResume = resolve;
+          }),
+      );
+      const latestError = new Error('NEWER_OPERATION_FAILED');
+      f.chat.regenerate.mockImplementation(async () => {
+        f.chat.status = 'error';
+        f.chat.error = latestError;
+        throw latestError;
+      });
+      const { result } = renderHook(() => useChatMessageActions(f.options));
+      const pending =
+        kind === 'decision'
+          ? decide(result.current.decideToolCall)
+          : result.current.continueReply();
+      await waitFor(() => expect(f.chat.resumeStream).toHaveBeenCalledTimes(1));
+
+      await act(() => result.current.retryMessage(message('output-error')));
+      resolveResume();
+      await act(() => pending);
+
+      expect(f.setError.mock.calls.filter(([error]) => error)).toEqual([
+        [latestError],
+      ]);
+    },
+  );
 
   it('does not offer a finished reply or an incompletely decided group', () => {
     expect(getDecidedToolMessage([message('input-available')])).toBeUndefined();

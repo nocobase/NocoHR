@@ -43,6 +43,20 @@ type RefreshConversationMessages = (
 const isChatRunning = (chat: Chat<AIChatMessage>) =>
   chat.status === 'streaming' || chat.status === 'submitted';
 
+const removeEmptyResponsePlaceholder = (
+  chat: Chat<AIChatMessage>,
+  responseMessageId?: string,
+) => {
+  if (!responseMessageId) return;
+  const response = chat.messages.find(
+    (message) => message.id === responseMessageId,
+  );
+  if (!response || response.parts.length > 0) return;
+  chat.messages = chat.messages.filter(
+    (message) => message.id !== responseMessageId,
+  );
+};
+
 const getToolInvocationContext = ({
   conversationId,
   messages,
@@ -97,6 +111,7 @@ export function useChatMessageActions({
   setConversationWorkContext,
   dispatch,
   requestComposerFocus,
+  actionTokenRef: sharedActionTokenRef,
 }: {
   ai: AIContextValue;
   activeChat: Chat<AIChatMessage>;
@@ -121,7 +136,24 @@ export function useChatMessageActions({
   ) => void;
   dispatch: Dispatch<AIChatAction>;
   requestComposerFocus: () => void;
+  actionTokenRef?: MutableRefObject<Map<string, symbol>>;
 }) {
+  const localActionTokenRef = useRef<Map<string, symbol>>(new Map());
+  const actionTokenRef = sharedActionTokenRef ?? localActionTokenRef;
+  const beginAction = useCallback(
+    (conversationId: string) => {
+      const token = Symbol(conversationId);
+      actionTokenRef.current.set(conversationId, token);
+      return token;
+    },
+    [actionTokenRef],
+  );
+  const isCurrentAction = useCallback(
+    (conversationId: string, token: symbol) =>
+      actionTokenRef.current.get(conversationId) === token,
+    [actionTokenRef],
+  );
+
   const resolveServerMessage = useCallback(
     async (
       conversationId: string,
@@ -179,13 +211,18 @@ export function useChatMessageActions({
         return;
       }
 
-      setHistoryError(undefined);
+      const conversationId = stateRef.current.activeConversationId;
+      const actionToken = beginAction(conversationId);
+      if (stateRef.current.activeConversationId === conversationId) {
+        setHistoryError(undefined);
+      }
       try {
         const resolved = await resolveServerMessage(
-          stateRef.current.activeConversationId,
+          conversationId,
           activeChat,
           message,
         );
+        if (!isCurrentAction(conversationId, actionToken)) return;
         if (!resolved.serverMessageId) {
           throw new Error('The server message id is unavailable for retry.');
         }
@@ -197,17 +234,28 @@ export function useChatMessageActions({
         try {
           await activeChat.regenerate({ messageId: resolved.targetMessage.id });
         } catch (error) {
-          transport.cancelResend(resolved.serverMessageId);
+          if (isCurrentAction(conversationId, actionToken)) {
+            transport.cancelResend(resolved.serverMessageId);
+          }
           throw error;
         }
       } catch (error) {
-        setHistoryError(
-          error instanceof Error ? error : new Error('Unable to retry message'),
-        );
+        if (
+          isCurrentAction(conversationId, actionToken) &&
+          stateRef.current.activeConversationId === conversationId
+        ) {
+          setHistoryError(
+            error instanceof Error
+              ? error
+              : new Error('Unable to retry message'),
+          );
+        }
       }
     },
     [
       activeChat,
+      beginAction,
+      isCurrentAction,
       resolveServerMessage,
       setHistoryError,
       stateRef,
@@ -224,7 +272,11 @@ export function useChatMessageActions({
     ) => {
       if (isChatRunning(targetChat)) return;
 
-      setHistoryError(undefined);
+      const actionToken = beginAction(conversationId);
+      if (stateRef.current.activeConversationId === conversationId) {
+        setHistoryError(undefined);
+      }
+      let responseMessageId: string | undefined;
       try {
         const message = findChatMessage(
           targetChat.messages,
@@ -367,7 +419,7 @@ export function useChatMessageActions({
             resolved.rootIndex + 1,
           );
         }
-        const responseMessageId = `assistant-${crypto.randomUUID()}`;
+        responseMessageId = `assistant-${crypto.randomUUID()}`;
         targetChat.messages = [
           ...targetChat.messages,
           {
@@ -388,18 +440,25 @@ export function useChatMessageActions({
         );
         try {
           await targetChat.resumeStream();
+          if (!isCurrentAction(conversationId, actionToken)) return;
           // Chat reports transport/stream failures through status and resolves
           // resumeStream, so handle that outcome just like explicit Continue.
           if (targetChat.status === 'error')
             throw targetChat.error ?? new Error('Unable to continue the reply');
         } catch (error) {
-          transport.cancelToolResume(resolved.serverMessageId);
-          targetChat.messages = targetChat.messages.filter(
-            (item) => item.id !== responseMessageId,
-          );
+          if (isCurrentAction(conversationId, actionToken)) {
+            transport.cancelToolResume(resolved.serverMessageId);
+          }
+          removeEmptyResponsePlaceholder(targetChat, responseMessageId);
           throw error;
         }
       } catch (error) {
+        if (
+          !isCurrentAction(conversationId, actionToken) ||
+          stateRef.current.activeConversationId !== conversationId
+        ) {
+          return;
+        }
         setHistoryError(
           error instanceof Error
             ? error
@@ -410,8 +469,10 @@ export function useChatMessageActions({
     },
     [
       ai,
+      beginAction,
       chatSurfaceOpenRef,
       getRuntimeContext,
+      isCurrentAction,
       refreshConversationMessages,
       resolveServerMessage,
       setHistoryError,
@@ -430,8 +491,11 @@ export function useChatMessageActions({
     if (!message) return;
     const transport = transportsRef.current.get(conversationId);
     if (!transport) return;
+    const actionToken = beginAction(conversationId);
     continuingRef.current.add(conversationId);
-    setHistoryError(undefined);
+    if (stateRef.current.activeConversationId === conversationId) {
+      setHistoryError(undefined);
+    }
     const responseMessageId = `assistant-${crypto.randomUUID()}`;
     targetChat.messages = [
       ...targetChat.messages,
@@ -453,22 +517,36 @@ export function useChatMessageActions({
     );
     try {
       await targetChat.resumeStream();
+      if (!isCurrentAction(conversationId, actionToken)) return;
       if (targetChat.status === 'error')
         throw targetChat.error ?? new Error('Unable to continue the reply');
     } catch (error) {
-      transport.cancelToolResume(message.metadata!.serverMessageId!);
-      targetChat.messages = targetChat.messages.filter(
-        (item) => item.id !== responseMessageId,
-      );
-      setHistoryError(
-        error instanceof Error
-          ? error
-          : new Error('Unable to continue the reply'),
-      );
+      if (isCurrentAction(conversationId, actionToken)) {
+        transport.cancelToolResume(message.metadata!.serverMessageId!);
+      }
+      removeEmptyResponsePlaceholder(targetChat, responseMessageId);
+      if (
+        isCurrentAction(conversationId, actionToken) &&
+        stateRef.current.activeConversationId === conversationId
+      ) {
+        setHistoryError(
+          error instanceof Error
+            ? error
+            : new Error('Unable to continue the reply'),
+        );
+      }
     } finally {
       continuingRef.current.delete(conversationId);
     }
-  }, [getChat, getRuntimeContext, setHistoryError, stateRef, transportsRef]);
+  }, [
+    beginAction,
+    getChat,
+    getRuntimeContext,
+    isCurrentAction,
+    setHistoryError,
+    stateRef,
+    transportsRef,
+  ]);
 
   const decideToolCall = useCallback(
     (decision: AIToolCallDecision) =>

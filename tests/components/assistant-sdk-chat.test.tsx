@@ -94,6 +94,7 @@ function fixture(
     });
     const invoke = vi.fn(async () => ({ handled: false }));
     const setError = vi.fn();
+    const stateRef = { current: { activeConversationId: session.id } };
     const hookOptions = {
       ai: {
         updateToolCallDecision: service.updateToolCallDecision.bind(service),
@@ -101,7 +102,7 @@ function fixture(
       },
       activeChat: chat,
       getChat: () => chat,
-      stateRef: { current: { activeConversationId: session.id } },
+      stateRef,
       chatSurfaceOpenRef: { current: true },
       transportsRef: { current: new Map([[session.id, transport]]) },
       getRuntimeContext: () => ({ employeeUsername: protocol.employee }),
@@ -147,7 +148,7 @@ function fixture(
         }),
       );
     };
-    return { chat, transport, hook, decide, invoke, setError };
+    return { chat, transport, hook, decide, invoke, setError, hookOptions };
   };
   return {
     f,
@@ -190,6 +191,31 @@ const text = (chat: Chat<AIChatMessage>) =>
     ?.parts.filter((p) => p.type === 'text')
     .map((p) => p.text)
     .join('');
+
+const reopenWithDecidedHistory = async (h: ReturnType<typeof fixture>) => {
+  const page = h.createChat();
+  await send(page.chat);
+  await h.decideStored();
+  const saved = structuredClone(page.chat.messages).map((message) => ({
+    ...message,
+    metadata: { serverMessageId: h.f.messageId() },
+    parts: message.parts.map((part) =>
+      isAIToolPart(part)
+        ? {
+            type: 'dynamic-tool' as const,
+            toolName:
+              part.type === 'dynamic-tool' ? part.toolName : part.type.slice(5),
+            toolCallId: part.toolCallId,
+            input: part.input,
+            state: 'output-available' as const,
+            output: { id: 'synthetic-draft' },
+          }
+        : part,
+    ),
+  }));
+  page.hook.unmount();
+  return h.createChat(saved);
+};
 
 describe('published Chat SDK and application chat contracts', () => {
   it('sends the unchanged request through RuntimeAIService and consumes text', async () => {
@@ -530,6 +556,82 @@ describe('SDK stop releases the incoming SSE reader', () => {
       expect(chat.status).toBe('ready');
       expect(chat.error).toBeUndefined();
       expect(raw.locked).toBe(false);
+    },
+  );
+});
+
+describe('continuation regressions', () => {
+  it.each(['decision', 'continue'] as const)(
+    'retains partial text after a %s stream failure',
+    async (kind) => {
+      const h = fixture();
+      const page =
+        kind === 'decision'
+          ? h.createChat()
+          : await reopenWithDecidedHistory(h);
+      if (kind === 'decision') await send(page.chat);
+
+      let rawController!: ReadableStreamDefaultController<Uint8Array>;
+      h.stream.mockImplementationOnce(
+        async () =>
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              rawController = controller;
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `data: ${JSON.stringify({ type: 'new_message' })}\n\ndata: ${JSON.stringify({ type: 'content', body: 'Saved partial answer' })}\n\n`,
+                ),
+              );
+            },
+          }),
+      );
+      const pending =
+        kind === 'decision'
+          ? page.decide('approve').catch((error) => error)
+          : page.hook.result.current.continueReply();
+      await waitFor(() => expect(text(page.chat)).toBe('Saved partial answer'));
+
+      rawController.error(new Error('CONNECTION_LOST'));
+      await pending;
+
+      expect(text(page.chat)).toBe('Saved partial answer');
+    },
+  );
+
+  it.each(['decision', 'continue'] as const)(
+    'does not publish a late %s error after switching conversations',
+    async (kind) => {
+      const h = fixture();
+      const page =
+        kind === 'decision'
+          ? h.createChat()
+          : await reopenWithDecidedHistory(h);
+      if (kind === 'decision') await send(page.chat);
+
+      let rejectResume!: (reason: Error) => void;
+      let release!: () => void;
+      const opening = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      h.stream.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectResume = reject;
+            release();
+          }),
+      );
+      const pending =
+        kind === 'decision'
+          ? page.decide('approve').catch((error) => error)
+          : page.hook.result.current.continueReply();
+      await opening;
+      page.hookOptions.stateRef.current.activeConversationId =
+        'new-conversation';
+      page.setError.mockClear();
+      rejectResume(new Error('OLD_CONVERSATION_FAILED'));
+      await pending;
+
+      expect(page.setError).not.toHaveBeenCalled();
     },
   );
 });

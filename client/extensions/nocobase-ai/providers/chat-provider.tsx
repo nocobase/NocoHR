@@ -233,6 +233,10 @@ export function AIChatProvider({
     0,
   );
   const stateRef = useRef(state);
+  const actionTokenRef = useRef<Map<string, symbol>>(new Map());
+  const invalidateChatAction = useCallback((conversationId: string) => {
+    actionTokenRef.current.set(conversationId, Symbol(conversationId));
+  }, []);
   // The chat runtime reads these from callbacks that run after a commit, so
   // they are synchronized in an effect rather than written during render.
   useEffect(() => {
@@ -403,6 +407,7 @@ export function AIChatProvider({
       )
         return;
 
+      invalidateChatAction(currentId);
       setInteractionError(undefined);
       let currentWorkContext: typeof unresolvedWorkContext;
       try {
@@ -508,6 +513,7 @@ export function AIChatProvider({
       editingMessageId,
       getConversationAttachments,
       getConversationWorkContext,
+      invalidateChatAction,
       resolvePageContext,
       runtimeContextsRef,
       setConversationAttachments,
@@ -539,6 +545,7 @@ export function AIChatProvider({
     getRuntimeContext,
     refreshConversationMessages,
     setHistoryError,
+    actionTokenRef,
     editingSnapshotRef,
     setEditingMessageId,
     getConversationAttachments,
@@ -580,6 +587,8 @@ export function AIChatProvider({
 
   const startNewConversation = useCallback(() => {
     invalidatePendingInteraction();
+    invalidateChatAction(stateRef.current.activeConversationId);
+    setHistoryError(undefined);
     const snapshot = editingSnapshotRef.current;
     if (
       snapshot &&
@@ -608,18 +617,22 @@ export function AIChatProvider({
   }, [
     getChat,
     getConfiguredTaskSet,
+    invalidateChatAction,
     invalidateConversationHistory,
     invalidatePendingInteraction,
     queuePendingTask,
     removeChatRuntime,
     setConversationAttachments,
     setConversationWorkContext,
+    setHistoryError,
   ]);
 
   const triggerTask = useCallback(
     async (options: AIEmployeeTaskTrigger) => {
       const operationVersion = interactionVersionRef.current + 1;
       interactionVersionRef.current = operationVersion;
+      invalidateChatAction(stateRef.current.activeConversationId);
+      setHistoryError(undefined);
       cancelEditingMessage();
       // A trigger that names no employee opens this chat's own default, the
       // same one the chat starts on, rather than whichever employee sorts first.
@@ -711,12 +724,15 @@ export function AIChatProvider({
       defaultEmployeeUsername,
       getConfiguredTaskSet,
       inheritedPageContext,
+      invalidateChatAction,
       invalidateConversationHistory,
       queuePendingTask,
       resolvePageContext,
       removeChatRuntime,
+      setHistoryError,
       setConversationAttachments,
       setConversationWorkContext,
+      stateRef,
     ],
   );
 
@@ -771,6 +787,7 @@ export function AIChatProvider({
 
   const removeConversation = useCallback(
     async (conversationId: string) => {
+      invalidateChatAction(conversationId);
       if (stateRef.current.activeConversationId === conversationId) {
         invalidatePendingInteraction();
       }
@@ -812,6 +829,7 @@ export function AIChatProvider({
       ai,
       clearAutomaticToolApproval,
       getConfiguredTaskSet,
+      invalidateChatAction,
       invalidateConversationHistory,
       invalidatePendingInteraction,
       queuePendingTask,
@@ -875,14 +893,22 @@ export function AIChatProvider({
       addWorkContext,
       removeWorkContext,
       send,
-      stop: () => activeChat.stop(),
-      regenerate: () => activeChat.regenerate(),
+      stop: () => {
+        invalidateChatAction(stateRef.current.activeConversationId);
+        return activeChat.stop();
+      },
+      regenerate: () => {
+        invalidateChatAction(stateRef.current.activeConversationId);
+        return activeChat.regenerate();
+      },
       retryMessage,
       continueReply: canContinueReply ? continueReply : undefined,
       decideToolCall,
       startNewConversation,
       selectConversation: (conversationId) => {
         invalidatePendingInteraction();
+        invalidateChatAction(stateRef.current.activeConversationId);
+        setHistoryError(undefined);
         cancelEditingMessage();
         setInteractionError(undefined);
         taskRuntimeRef.current = undefined;
@@ -921,6 +947,8 @@ export function AIChatProvider({
         dispatch({ type: 'set-conversation-list-open', open }),
       selectEmployee: (username) => {
         invalidatePendingInteraction();
+        invalidateChatAction(stateRef.current.activeConversationId);
+        setHistoryError(undefined);
         cancelEditingMessage();
         setInteractionError(undefined);
         removeChatRuntime(AI_DRAFT_CONVERSATION_ID);
@@ -978,11 +1006,14 @@ export function AIChatProvider({
       removeChatRuntime,
       searchConversations,
       renameConversation,
+      invalidateChatAction,
       removeAttachment,
       addWorkContext,
       removeWorkContext,
       setConversationAttachments,
       setConversationWorkContext,
+      setHistoryError,
+      stateRef,
       runTask,
       retryMessage,
       continueReply,
