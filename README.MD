@@ -375,15 +375,11 @@ Tests live in `tests/`, never beside the source they cover. Put logic and integr
 
 `pnpm test:e2e` discovers the source workspace’s optional AI server test and skips it unless `AI_LOCAL_E2E=1`. Build first and use a dedicated, installed test application database with a configured LLM service and an API key belonging to a test user. Set `AI_E2E_LLM_SERVICE`, `AI_E2E_MODEL`, and `AI_E2E_API_KEY`; `AI_E2E_EMPLOYEE` defaults to `viz`. The test starts the compiled local server, makes a real model request, and removes its conversation afterward. Never point it at production data. Generated applications ship the Playwright configuration but no template tests, so an empty run succeeds.
 
-### Notification testing
+### Notification logs and verification
 
-After signing in with the `notification:test` `send` permission, use the
-notification logs settings page to send a real message through the durable
-Notification Manager. The form is generated from safe Channel test metadata;
-Email tests require an address and IM tests use the configured logical target.
-The button remains visible so configuration problems are discoverable. The
-server enforces the `notification:test` `send` permission only when the message
-is submitted.
+The notification logs settings page is read-only: it shows delivery records and attempts, including historical test sends, with refresh and expandable details. NocoHR replaces only the logs component in the installed legacy plugin's route contribution (`client/pages/notifications/plugin.ts`), preserving its settings navigation and `page:notification.logs` access permission. This framework version's `routeComponentOverrides` supports app routes only. Provider identities come from the recorded delivery, so old or removed channels remain readable.
+
+Verify delivery through a business flow or a server-side command using `notificationServiceToken.send()` with complete messages and explicit recipients. The application does not use the plugin's generic test form or test endpoints. Upgrade the pinned framework and notification packages together when adopting the release that removes those server APIs; remove this compatibility wrapper when migrating to an application-owned logs route.
 
 ## API documentation
 
