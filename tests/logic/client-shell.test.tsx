@@ -290,6 +290,7 @@ function renderApplication(
   const clientRoutes = [
     createRoute('home', '/', 'required', HomePage, 'application'),
     ...routes,
+    ...(options.settingsRouteTree ?? []),
   ];
   const authClient = createTestAuthClient(authenticated);
   const authorizationClient = new AuthorizationClient({
@@ -310,7 +311,7 @@ function renderApplication(
   ]);
   const app = {
     config: createAppClientConfig({ rawConfig: {} }),
-    runtime: { settingsRouteTree: options.settingsRouteTree ?? [] },
+    runtime: { routes: clientRoutes },
     services: {
       has: (token: unknown) => registered.has(token),
       resolve: (token: unknown) => {
@@ -324,11 +325,7 @@ function renderApplication(
       <AuthenticationProvider>
         <MemoryRouter initialEntries={[initialEntry]}>
           <AppThemeProvider>
-            <AppRouter
-              devRouteTree={[]}
-              clientRoutes={clientRoutes}
-              settingsRouteTree={options.settingsRouteTree ?? []}
-            />
+            <AppRouter clientRoutes={clientRoutes} />
           </AppThemeProvider>
         </MemoryRouter>
       </AuthenticationProvider>
@@ -341,7 +338,7 @@ function createTestAuthClient(authenticated: boolean) {
     getSession: vi.fn().mockResolvedValue({
       data: authenticated
         ? {
-            session: null,
+            session: { id: 'test-session', userId: '1' },
             user: {
               email: 'alice@example.com',
               id: '1',

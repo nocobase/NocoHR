@@ -114,7 +114,7 @@ test('persists tool state across store instances and atomically claims one execu
   };
   await original.create(call);
   const reopened = new DatabaseToolCallStore(connection);
-  expect(await reopened.find('call')).toEqual(call);
+  expect(await reopened.find('call')).toEqual({ ...call, auto: false });
   const claims = await Promise.all([
     original.claim('call', 'pending', 'executing'),
     reopened.claim('call', 'pending', 'executing'),
