@@ -410,7 +410,7 @@ MIT
 
 ## Deployment
 
-For a standalone server managed by `@nocobase/app-installer`, build a platform-matched archive with `pnpm build --target linux-x64 --node-version 24 --tar`. Alternatively, use this application's `Dockerfile`. See [building and deploying this application](.agents/rules/build-and-deploy.md) and the [deployment Skill](.agents/skills/nocobase-deployment/SKILL.md) for configuration, persistent data, migrations and recovery. Runtime configuration and business data are not included in an archive or image.
+For a standalone server managed by `@nocobase/app-installer`, build a platform-matched archive with `pnpm build --target linux-x64 --node-version 24 --tar`. Alternatively, use this application's `Dockerfile`. See [building and deploying this application](.agents/rules/build-and-deploy.md) and the [deployment Skill](.agents/skills/nocobase-deployment/SKILL.md) for configuration, persistent data, migrations and recovery. The archive excludes the deployment root's live `config.yml`, databases, uploads and persistent storage, but can include build-generated environment settings in `dist/.env`. Inspect the archive before transferring it. The Docker image separately excludes `dist/.env`; runtime configuration and persistent data are supplied outside the image.
 
 NocoBase Hub publishing is discontinued. Do not use the old Hub commands. Its dependency is pending native removal as recorded in the [integration status](server/providers/upgrade/template-integration.md); the current application dependency graph prevents that command from completing. Template integration is incomplete, and this branch is not ready to deploy.
 
