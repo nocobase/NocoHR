@@ -2,7 +2,7 @@ import { AIMessage, type BaseMessage } from '@langchain/core/messages';
 import { ServiceContainer } from '@nocobase/service-provider';
 import { z } from 'zod';
 
-import { defineTools } from '../../server/ai/contracts.js';
+import { defineTools, type RegisteredTool } from '../../server/ai/contracts.js';
 import {
   AssistantChatAdapter,
   type AssistantChatEvent,
@@ -26,6 +26,7 @@ export function createAssistantChatFixture(
     autoCalls?: number;
     denyAuto?: boolean;
     toolResult?: unknown;
+    plain?: boolean;
   } = {},
 ) {
   const actor = { id: 'synthetic-owner', roles: [], isRoot: false };
@@ -112,7 +113,7 @@ export function createAssistantChatFixture(
       return { value: 42 };
     },
   });
-  const tools = new Map([
+  const tools = new Map<string, RegisteredTool>([
     ['saveDraft', tool],
     ['readValue', automatic],
   ]);
@@ -122,7 +123,7 @@ export function createAssistantChatFixture(
     async reply(input) {
       counts.models++;
       modelInputs.push(input.messages);
-      if (counts.models === 1)
+      if (counts.models === 1 && !options.plain)
         return new AIMessage({
           content: '',
           tool_calls: [

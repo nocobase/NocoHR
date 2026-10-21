@@ -2,6 +2,8 @@
 
 The fixed upgrade target is `@nocobase/app-template-default@1.0.0-beta.74` with `@nocobase/app-skills@0.1.0-beta.42`. The application manifest now declares that target's published dependency ranges, preserving application-owned additions and retained packages. The independent server/configuration, build and named client management changes below were verified against the previous `.70` / `.38` target; their source contracts have not yet been migrated to Client 4 or Server 3. This branch is not a runnable completed upgrade. Keep the pull request as a draft, both replacement runtimes and device authorization disabled, and `defaultTemplateVersion` at `1.0.0-beta.54`. Do not deploy this intermediate manifest or use its old lockfile as a target installation.
 
+The [chat SDK contract unit](chat-sdk-unit.md) verifies the fixed AI SDK with real Chat consumption and adapts cancellation and continuation errors. Its fixtures preserve the existing service/protocol; full Client 4/Server 3 composition and the business cutover gates remain pending.
+
 ## Fixed target and deployment-tool cleanup
 
 The target is an exact release, not a moving dist-tag. Its metadata and tarball were fetched from the public registry and verified against both SHA-1 and SHA-512 integrity. The `.74` metadata matches the snapshot used when selecting this target. No newer tag was resolved during this cleanup.

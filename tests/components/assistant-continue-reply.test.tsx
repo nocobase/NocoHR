@@ -253,6 +253,7 @@ describe('saved tool decision continuation', () => {
         messageId: 'saved-message',
         toolCallResults: [],
       }),
+      expect.any(AbortSignal),
     );
     await waitFor(() =>
       expect(

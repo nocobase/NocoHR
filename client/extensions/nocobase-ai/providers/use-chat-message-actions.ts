@@ -388,6 +388,10 @@ export function useChatMessageActions({
         );
         try {
           await targetChat.resumeStream();
+          // Chat reports transport/stream failures through status and resolves
+          // resumeStream, so handle that outcome just like explicit Continue.
+          if (targetChat.status === 'error')
+            throw targetChat.error ?? new Error('Unable to continue the reply');
         } catch (error) {
           transport.cancelToolResume(resolved.serverMessageId);
           targetChat.messages = targetChat.messages.filter(
@@ -419,17 +423,18 @@ export function useChatMessageActions({
   const continuingRef = useRef(new Set<string>());
   const continueReply = useCallback(async () => {
     const conversationId = stateRef.current.activeConversationId;
-    if (isChatRunning(activeChat) || continuingRef.current.has(conversationId))
+    const targetChat = getChat(conversationId);
+    if (isChatRunning(targetChat) || continuingRef.current.has(conversationId))
       return;
-    const message = getDecidedToolMessage(activeChat.messages);
+    const message = getDecidedToolMessage(targetChat.messages);
     if (!message) return;
     const transport = transportsRef.current.get(conversationId);
     if (!transport) return;
     continuingRef.current.add(conversationId);
     setHistoryError(undefined);
     const responseMessageId = `assistant-${crypto.randomUUID()}`;
-    activeChat.messages = [
-      ...activeChat.messages,
+    targetChat.messages = [
+      ...targetChat.messages,
       {
         id: responseMessageId,
         role: 'assistant',
@@ -447,12 +452,12 @@ export function useChatMessageActions({
       [],
     );
     try {
-      await activeChat.resumeStream();
-      if (activeChat.status === 'error')
-        throw activeChat.error ?? new Error('Unable to continue the reply');
+      await targetChat.resumeStream();
+      if (targetChat.status === 'error')
+        throw targetChat.error ?? new Error('Unable to continue the reply');
     } catch (error) {
       transport.cancelToolResume(message.metadata!.serverMessageId!);
-      activeChat.messages = activeChat.messages.filter(
+      targetChat.messages = targetChat.messages.filter(
         (item) => item.id !== responseMessageId,
       );
       setHistoryError(
@@ -463,7 +468,7 @@ export function useChatMessageActions({
     } finally {
       continuingRef.current.delete(conversationId);
     }
-  }, [activeChat, getRuntimeContext, setHistoryError, stateRef, transportsRef]);
+  }, [getChat, getRuntimeContext, setHistoryError, stateRef, transportsRef]);
 
   const decideToolCall = useCallback(
     (decision: AIToolCallDecision) =>
