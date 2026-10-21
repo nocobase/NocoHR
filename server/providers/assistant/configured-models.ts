@@ -54,7 +54,9 @@ export function assistantModels(
             })
             .invoke([...input.messages], { signal: input.signal });
           const text =
-            value.parsed === null
+            // A plain-text completion can omit `parsed`; failed parsing can return null.
+            // Both must reach the runner's existing schema/fromText validation.
+            value.parsed == null
               ? typeof value.raw.content === 'string'
                 ? value.raw.content
                 : ''
