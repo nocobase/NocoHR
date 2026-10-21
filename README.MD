@@ -251,13 +251,13 @@ For example, `pnpm build --target linux-x64 --node-version 24` produces:
 }
 ```
 
-`nodeMajor` describes the target runtime, not the Node version used to run the build. No target patch version is implied. These fields provide platform and Node ABI checks for Hub deployment; they do not describe system libraries, CPU instruction requirements, or other runtime prerequisites.
+`nodeMajor` describes the target runtime, not the Node version used to run the build. No target patch version is implied. These fields provide platform and Node ABI checks for deployment; they do not describe system libraries, CPU instruction requirements, or other runtime prerequisites.
 
 If your application has no native modules — `pg`, `mysql2`, and `tedious` are all plain JavaScript — no platform-specific binaries need retargeting. The build still records the selected target, and the deployment runtime must satisfy `engines.node`.
 
 #### Packing the build
 
-`pnpm build --tar` writes `storage/exports/dist.tar.gz`, the artifact you upload to a Hub to deploy this application.
+`pnpm build --tar` writes `storage/exports/dist.tar.gz`, the artifact `@nocobase/app-installer` installs on a server.
 
 The archive has two levels: `config.example.yml` and `dist/` sit at the root, and the build is inside `dist/`. What `dist/` holds varies with the application; this is the shape:
 
@@ -408,45 +408,11 @@ Replace `/main` with the application's `APP_BASE_PATH`. An application without t
 
 MIT
 
-## Publish to an application Hub
+## Deployment
 
-This template depends on `@nocobase/hub-cli`, which gives the application the `pnpm nocobase hub` commands; removing the dependency removes them. Run them in the source checkout or in CI: a built `dist/` does not register them, because they build and send the application from its sources.
+For a standalone server managed by `@nocobase/app-installer`, build a platform-matched archive with `pnpm build --target linux-x64 --node-version 24 --tar`. Alternatively, use this application's `Dockerfile`. See [building and deploying this application](.agents/rules/build-and-deploy.md) and the [deployment Skill](.agents/skills/nocobase-deployment/SKILL.md) for configuration, persistent data, migrations and recovery. Runtime configuration and business data are not included in an archive or image.
 
-### Add the Hub as a remote
-
-A remote is one App on one Hub, addressed as `<Hub URL>/apps/<App ID>`, where the Hub URL includes the Hub's mount path:
-
-```bash
-pnpm nocobase hub remote add origin http://127.0.0.1:13000/main/apps/crm
-pnpm nocobase hub remote list
-```
-
-Remotes are saved in `.nocobase/hub.json`, which holds addresses only and belongs in version control. The first remote added is the default; every other `hub` command takes `--remote <name>` to pick another, and `hub remote remove <name>` deletes one.
-
-### Create and save a publishing key
-
-The `hub` commands authenticate with a Hub publishing key, created in Hub rather than in this application. Open **API Keys** in the Hub navigation (`<Hub URL>/api-keys`); reaching that page requires `hub.app / manage-api-keys`, granted to `hub-administrator` and `hub-operator` by default. In **Create API Key**, select this application under **Applications**, or **All applications (including future apps)**, then grant the permissions the commands below need: **Upload release** for `pnpm nocobase hub upload`, and both **Upload release** and **Deploy release** for `pnpm nocobase hub deploy`.
-
-The plaintext key is shown once at creation; while the key stays active its creator can copy it again from the same page. Bound applications and granted permissions cannot be changed afterwards, so a key created without `Deploy release` has to be deleted and recreated rather than edited. A key never exceeds its creator's current permissions, so uploads fail if the creator later loses access to the bound application. See [Publish applications with Hub](https://github.com/nocobase/nocobase3/blob/develop/docs/docs/en/deployment/hub.md) for the console walkthrough.
-
-Save the key with `pnpm nocobase hub auth login`, which asks for it without echoing it and checks with the Hub that it opens the App. It is stored outside the project in `$XDG_CONFIG_HOME/nocobase/hub-credentials.json` (`~/.config` when that is unset, `%APPDATA%\nocobase` on Windows), readable by the owner only, one key per remote URL. The commands read no key or Hub address from `.env`, the environment or command-line flags. `hub auth status` reports whether each remote has a key the Hub accepts, and `hub auth logout` removes a saved key. In CI, pipe the key in from a secret:
-
-```bash
-echo "$HUB_KEY" | pnpm nocobase hub auth login --remote origin --with-token
-pnpm nocobase hub deploy --remote origin --json
-```
-
-### Deploy
-
-```bash
-pnpm nocobase hub deploy --json
-pnpm nocobase hub upload --json
-pnpm nocobase hub deploy --release-id <releaseId> --json
-```
-
-`hub deploy` asks the Hub which platform it runs Apps on, builds the application for it with `nocobase build --target … --node-version … --tar`, uploads the archive as a Release and deploys it, waiting for the result unless `--no-wait` is given. Do not run `pnpm build --tar` first. When the Hub already has the archive, its Release is deployed. `hub upload` builds and uploads without deploying, and `hub deploy --release-id` deploys a Release already on the Hub, which is also how to roll back. `--no-build` sends the existing `storage/exports/dist.tar.gz` and `--file` another archive; both are checked against the Hub's platform and fail with `BUILD_TARGET_MISMATCH` when they were built for another. Hub has no automatic or manual deployment setting; scripts decide which commands to run.
-
-`node_modules/@nocobase/hub-cli/README.md` is the full reference: every flag, `--config` for the runtime configuration, retry identity, the `--json` document and the exit codes. Exit 3 does not mean the deployment failed or was cancelled; inspect the deployment in Hub and retry with the same `--idempotency-key` if necessary.
+NocoBase Hub publishing is discontinued. Do not use the old Hub commands. Its dependency is pending native removal as recorded in the [integration status](server/providers/upgrade/template-integration.md); the current application dependency graph prevents that command from completing. Template integration is incomplete, and this branch is not ready to deploy.
 
 ## Runtime paths and application creation
 

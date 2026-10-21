@@ -1,6 +1,6 @@
 # Capability migration foundations
 
-The application is preparing to replace its retired AI Employee and incompatible Workflow plugins before merging template `1.0.0-beta.70` (paired with `@nocobase/app-skills@0.1.0-beta.38`, from `https://registry.npmjs.org`). The current template declaration remains `1.0.0-beta.54`. The existing plugins remain the default runtimes. An application-owned text chat runtime is registered behind `assistant.enabled`, which defaults to false. Installing this code does not change deployment configuration or remove the old plugins.
+The application is preparing to replace its retired AI Employee and incompatible Workflow plugins before merging the fixed template `1.0.0-beta.74` (paired with `@nocobase/app-skills@0.1.0-beta.42`, from `https://registry.npmjs.org`). Existing adapters were verified against the previous `.70` / `.38` target; see [integration status](template-integration.md) for the pending Client 4 / Server 3 / Agents / Realtime work and dependency blockers. The current template declaration remains `1.0.0-beta.54`. The existing plugins remain the default runtimes. An application-owned text chat runtime is registered behind `assistant.enabled`, which defaults to false. Installing this code does not change deployment configuration or remove the old plugins.
 
 ## Implemented boundaries
 

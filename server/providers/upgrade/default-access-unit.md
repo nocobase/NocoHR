@@ -45,4 +45,4 @@ With the approved isolated target tooling available to the checkout, run:
 node node_modules/vitest/vitest.mjs run tests/components/default-access.test.tsx tests/logic/authorization-management.test.ts tests/logic/client-management-routes.test.ts tests/logic/page-permission-titles.test.ts --reporter=dot
 ```
 
-Run the targeted client/native type scripts and scoped lint/format check used for this change. The tooling lock lives outside the application and must not replace `pnpm-lock.yaml`. The approved target stays template `.70` / Skills `.38`; version and lockfile cutover remain pending.
+Run the targeted client/native type scripts and scoped lint/format check used for this change. The tooling lock lives outside the application and must not replace `pnpm-lock.yaml`. This unit was verified against template `.70` / Skills `.38`; the fixed target is now `.74` / `.42` as recorded in [integration status](template-integration.md). Target adaptation and lockfile cutover remain pending.

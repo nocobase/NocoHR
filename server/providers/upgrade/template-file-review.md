@@ -4,7 +4,7 @@ The independent scaffold and named client adapters are prepared; the complete up
 
 **Details**
 
-Comparison: recovered `.54` source to the published `.70` package. Each row records the application at `cba1872` and the current cumulative decision; rows marked Client unit include the later client reconciliation. Newly introduced local verification files are outside this upstream diff.
+Historical comparison: recovered `.54` source to the published `.70` package. The fixed target is now `.74` / Skills `.42`; this table does not claim to cover the additional `.70 → .74` changes. See [integration status](template-integration.md) before continuing the source merge. Each row records the application at `cba1872` and the current cumulative decision; rows marked Client unit include the later client reconciliation. Newly introduced local verification files are outside this upstream diff.
 
 | Path                                                                                             | Upstream change | Application before this increment | Decision                                                                                                          |
 | ------------------------------------------------------------------------------------------------ | --------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------- |

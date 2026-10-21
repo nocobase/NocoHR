@@ -23,7 +23,7 @@ The standard template's Users and Roles contribution is registered once. It uses
 
 ## Source and manual decisions
 
-- Target source remains `@nocobase/app-template-default@1.0.0-beta.70`, tarball SHA-1 `81ea5186738e5412334260c3ae1cae45080f6db1`; Skills remains `0.1.0-beta.38`. Target package bytes and source comparison are preserved in the preceding integration evidence.
+- This unit used `@nocobase/app-template-default@1.0.0-beta.70`, tarball SHA-1 `81ea5186738e5412334260c3ae1cae45080f6db1`, and Skills `0.1.0-beta.38`. These are historical verification inputs. The fixed upgrade target is now `.74` / `.42`; the [integration record](template-integration.md) lists the pending Client 4 and Server 3 work. These results have not been rerun against that target.
 - New Users/Roles, permission editor/filter, shared directory table, session-preparation and device UI sources come from that exact target. Existing files at those paths were checked before adding files; no business directory was replaced.
 - The target role paths are manually adapted to the old authorization URLs and action identifiers. Assignments uses the target's public subject-directory/assignment client instead of copying the old plugin's private state machinery.
 - API-key and Explorer presentation comes from the official retained source at [`nocobase/nocobase3@6f38530`](https://github.com/nocobase/nocobase3/tree/6f38530/packages/plugins), adapted to installed public target clients and application i18n. It adds no backend or published plugin. Public server exports used in Explorer are type-only.
