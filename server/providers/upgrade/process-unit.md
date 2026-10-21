@@ -72,9 +72,35 @@ The synthetic SQLite trace includes metadata queries; authorization callbacks an
 
 The native Scheduler end-to-end trace includes cold synchronization/activation, one firing, Jobs execution and occurrence reading: successful branch 95 SELECT / 7 INSERT / 13 UPDATE / 8 transactions; failed branch 75 / 6 / 10 / 6. These are whole-unit measurements, not incremental per-poll estimates. Normal submission queues one process job; concurrent first submissions may queue duplicates, while node claims prevent repeat execution. Each scheduled terminal completion calls the existing native completion service, with its own persisted occurrence update. No application lock, recurring scan or polling request is added; native Scheduler's existing reconciliation remains native behavior.
 
+### Lost and late completion recovery
+
+The recovery test holds the process node until native dispatch has stored its accepted reference, then suppresses exactly one terminal notification. It rebuilds the process catalog/service, target binding and native Scheduler service against the same SQLite database. The reconstructed process inspection finds the persisted success or failure; native Scheduler reconciliation inspects that reference and changes the waiting occurrence to the same terminal result without re-executing a node or business write. A late report through the original handle and a duplicate report through the rebuilt handle are idempotent. Wrong target type/id references return `REFERENCE_MISMATCH`; a conflicting terminal result returns `COMPLETION_CONFLICT`; the final occurrence state remains unchanged and the rebuilt service queues no replacement job.
+
+The test drives the concrete Scheduler service's `reconcileOccurrences()` directly so it does not wait for the provider timer. As in the existing integration tests, concrete `sync()`, `activate()` and `listOccurrences()` are test setup/observation surfaces; the application's public Scheduler token remains registration-only. No production recovery API or polling loop is added.
+
+The following counts are per measured SQLite operation in each success and failure case. `BEGIN` and savepoint counts are zero throughout.
+
+| Operation                                            | SELECT | INSERT | UPDATE | DELETE |
+| ---------------------------------------------------- | -----: | -----: | -----: | -----: |
+| Read waiting occurrence before reconstruction        |      2 |      0 |      0 |      0 |
+| Query terminal process state through rebuilt service |      1 |      0 |      0 |      0 |
+| Native Scheduler reconciliation                      |      3 |      0 |      2 |      0 |
+| Late report through the original handle              |      1 |      0 |      0 |      0 |
+| Duplicate report through the rebuilt handle          |      1 |      0 |      0 |      0 |
+| Wrong reference type                                 |      1 |      0 |      0 |      0 |
+| Wrong reference ID                                   |      1 |      0 |      0 |      0 |
+| Conflicting terminal report                          |      1 |      0 |      0 |      0 |
+| Final occurrence state read                          |      2 |      0 |      0 |      0 |
+
+The recovery test uses a synthetic definition and authorization callback. Scheduler and Jobs services, target handles, process persistence, the work-item store and SQLite are real; no full process exit/reopen, deployment identity, HR permission policy, PostgreSQL or production Jobs backend is exercised. The existing selected identity-denial and permission-revocation tests still run alongside it.
+
 ## Verification and remaining gates
 
-The independent target-package checks execute actual SQLite state and ledger transactions, artifact compilation/loading, native Jobs and native Scheduler migrations/service/dispatch/completion. Scheduler dispatch is invoked through its captured native scheduled job, without waiting for wall-clock timers. Success and failure persist as native occurrence outcomes. API tests use actual routes and services with substituted identity/authorization middleware. Cases also cover invalid input, branch selection, duplicate events, permission withdrawal, lost-worker no-replay, reopened history without Collection metadata, exact bigint IDs, rollback, replay preservation and schema rollback refusal.
+The independent target-package checks execute actual SQLite state and ledger transactions, artifact compilation/loading, native Jobs and native Scheduler migrations/service/dispatch/completion. Scheduler dispatch is invoked through its captured native scheduled job, without waiting for wall-clock timers. Success and failure persist as native occurrence outcomes. API tests use actual routes and services with substituted identity/authorization middleware. Cases also cover invalid input, branch selection, duplicate events, permission withdrawal, lost-worker no-replay, reopened history without Collection metadata, exact bigint IDs, rollback, replay preservation and schema rollback refusal. The targeted recovery selection in the fixed `.41fe950` checkout passed **8 tests; 20 tests were skipped by the explicit name filter**. Re-run the selected cases with:
+
+```sh
+pnpm exec vitest run tests/logic/process-integration.test.ts -t 'reports a real Scheduler occurrence|recovers a lost Scheduler completion after service reconstruction|runs the actual work-item|blocks unbound|observes delegation removal|rechecks real permission-set revocation' --disableConsoleIntercept
+```
 
 The strict semantic type subset includes the process runtime, routes/config, new migration, both CLI commands and build hooks against public target packages. Full repository checks cannot run with the unresolved legacy package/CLI environment. The application package manifest and lockfile remain unchanged for later template/dependency integration; public target validation dependencies live outside the repository. No production deployment or credentials are accessed.
 

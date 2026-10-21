@@ -14,6 +14,11 @@ import { ServiceContainer } from '@nocobase/service-provider';
 import { jobExecutorServiceToken } from '@nocobase/app-server/jobs';
 import schedulerPlugin, {
   ScheduleTargetRegistry,
+  type JsonObject,
+  type ScheduleExecutionCompletion,
+  type ScheduleTargetHandle,
+  type ScheduleTargetReference,
+  type ScheduleTargetType,
 } from '@nocobase/app-plugin-scheduler/server';
 import { schedulerServiceToken } from '@nocobase/app-plugin-scheduler/server/tokens';
 import { authenticationToken } from '@nocobase/app-plugin-authentication/server';
@@ -90,6 +95,7 @@ async function traceCosts(db: Awaited<ReturnType<typeof fixture>>['db']) {
         selects: statements.filter((s) => /^select\b/iu.test(s)).length,
         inserts: statements.filter((s) => /^insert\b/iu.test(s)).length,
         updates: statements.filter((s) => /^update\b/iu.test(s)).length,
+        deletes: statements.filter((s) => /^delete\b/iu.test(s)).length,
         begins: statements.filter((s) => /^begin\b/iu.test(s)).length,
         savepoints: statements.filter((s) => /^savepoint\b/iu.test(s)).length,
       }),
@@ -1193,6 +1199,361 @@ it.each([
         begins: sql.filter((s) => /^begin\b/iu.test(s)).length,
       }),
     );
+  },
+);
+
+it.each([
+  { allow: true, status: 'succeeded', work: 1 },
+  { allow: false, status: 'failed', work: 0 },
+])(
+  'recovers a lost Scheduler completion after service reconstruction: $status',
+  async ({ allow, status, work }) => {
+    type SchedulerTestAccess =
+      import('@nocobase/app-plugin-scheduler/server/tokens').SchedulerService & {
+        sync(): Promise<void>;
+        activate(): Promise<void>;
+        listOccurrences(id: string): Promise<
+          readonly {
+            id: string;
+            status: string;
+            target: { reference?: ScheduleTargetReference | null };
+          }[]
+        >;
+        reconcileOccurrences(): Promise<number>;
+      };
+    const f = await fixture();
+    const schedulerMigrations = path.resolve(
+      schedulerPlugin.baseDir!,
+      schedulerPlugin.database!.migrations as string,
+    );
+    for (const filename of (await readdir(schedulerMigrations))
+      .filter((name) => /^\d.*\.js$/u.test(name))
+      .sort()) {
+      const { default: migration } = await import(
+        pathToFileURL(path.join(schedulerMigrations, filename)).href
+      );
+      await migration.up({
+        builder: f.db.builder(),
+        query: f.db.query(),
+        repository: (name: string) => f.db.repository(name),
+      });
+    }
+
+    const createJobs = (name: string, persistence: string) =>
+      createJobExecutorService(
+        {
+          default: 'test',
+          test: {
+            adapter: 'memory',
+            attempts: 1,
+            persistence: { path: path.join(f.directory, persistence) },
+          },
+        },
+        { appName: name, storagePath: f.directory },
+      );
+    const createScheduler = (
+      name: string,
+      jobsService: ReturnType<typeof createJobExecutorService>,
+    ) => {
+      const container = new ServiceContainer();
+      container.instance(databaseManagerToken, f.db);
+      container.instance(jobExecutorServiceToken, jobsService);
+      const Provider = schedulerPlugin.serviceProviders!.find(
+        (provider: { name: string }) => provider.name === 'SchedulerProvider',
+      )!;
+      new Provider({
+        container,
+        appName: name,
+        config: { get: () => undefined },
+      } as never).register!();
+      return container.resolve(
+        schedulerServiceToken,
+      ) as unknown as SchedulerTestAccess;
+    };
+
+    const appName = 'native-process-recovery-test';
+    const jobs = createJobs(appName, 'native-jobs');
+    cleanups.push(() => jobs.shutdown());
+    const scheduled: import('@nocobase/jobs').ScheduleJob[] = [];
+    const originalGetScheduleExecutor = jobs.getScheduleExecutor.bind(jobs);
+    let nativeSchedule:
+      ReturnType<typeof originalGetScheduleExecutor> | undefined;
+    jobs.getScheduleExecutor = (scope, name) => {
+      const executor = originalGetScheduleExecutor(scope, name);
+      nativeSchedule = executor;
+      return new Proxy(executor, {
+        get(target, prop) {
+          if (prop === 'addJob')
+            return async (
+              job: import('@nocobase/jobs').ScheduleJob,
+              registerOnly?: boolean,
+            ) => {
+              scheduled.push(job);
+              return target.addJob(job, registerOnly);
+            };
+          const value = Reflect.get(target, prop);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    };
+
+    const scheduler = createScheduler(appName, jobs);
+    const executor = jobs.getJobExecutor('@hr/processes');
+    const jobEnqueue: {
+      current?: (key: string, occurrence?: string) => Promise<void>;
+    } = {};
+    let originalHandle: ScheduleTargetHandle | undefined;
+    let suppressNextCompletion = true;
+    let suppressedCompletions = 0;
+    const schedulerBinding: import('@nocobase/app-plugin-scheduler/server/tokens').SchedulerService =
+      {
+        defineSchedule: (definition) => scheduler.defineSchedule(definition),
+        registerTarget<TConfig extends JsonObject>(
+          target: ScheduleTargetType<TConfig>,
+        ) {
+          const handle = scheduler.registerTarget(target);
+          originalHandle = handle;
+          return {
+            type: handle.type,
+            async reportCompletion(occurrenceId, reference, completion) {
+              if (suppressNextCompletion) {
+                suppressNextCompletion = false;
+                suppressedCompletions += 1;
+                return;
+              }
+              await handle.reportCompletion(
+                occurrenceId,
+                reference,
+                completion,
+              );
+            },
+          };
+        },
+      };
+    const check = f.handlers.get('check')!;
+    let checkExecutions = 0;
+    let resumeExecution!: () => void;
+    const executionGate = new Promise<void>((resolve) => {
+      resumeExecution = resolve;
+    });
+    f.handlers.set('check', async (input) => {
+      checkExecutions += 1;
+      await executionGate;
+      return check(input);
+    });
+    cleanups.push(async () => resumeExecution());
+
+    const service = new ProcessService(
+      f.db.connection(),
+      f.catalog,
+      f.handlers,
+      f.authorize,
+      async (eventKey, occurrenceId) => {
+        if (!jobEnqueue.current) throw new Error('PROCESS_JOBS_NOT_STARTED');
+        await jobEnqueue.current(eventKey, occurrenceId);
+      },
+    );
+    jobEnqueue.current = (
+      await bindProcessJobs(
+        service,
+        executor,
+        schedulerBinding,
+        () => 'manager',
+      )
+    ).enqueue;
+    scheduler.defineSchedule({
+      key: 'test-process',
+      title: 'Synthetic process schedule',
+      schedule: { cron: '0 0 1 1 *', timezone: 'UTC' },
+      target: {
+        type: 'app.process',
+        config: { key: 'approval', hash: f.hash, input: { allow } },
+      },
+    });
+    await scheduler.sync();
+    await nativeSchedule!.setup({ consume: false });
+    await scheduler.activate();
+    await executor.setup();
+
+    const processJobFinished = new Promise<void>((resolve, reject) => {
+      executor.subscribe((event) => {
+        if (event.name === 'JobEnd') resolve();
+        if (event.name === 'JobError') reject(event.error);
+      });
+    });
+    expect(scheduled).toHaveLength(1);
+    const costs = await traceCosts(f.db);
+    const occurrenceId = 'native-recovery-occurrence';
+    const now = new Date();
+    try {
+      await scheduled[0]!.execute({
+        jobId: occurrenceId,
+        scheduledAt: now,
+        runAt: now,
+        signal: new AbortController().signal,
+      });
+      const waiting = await costs(
+        'waiting occurrence read before restart',
+        () => scheduler.listOccurrences(scheduled[0]!.name),
+      );
+      expect(waiting).toHaveLength(1);
+      expect(waiting[0]).toMatchObject({ id: occurrenceId, status: 'waiting' });
+      const reference = waiting[0]!.target.reference;
+      expect(reference).toMatchObject({
+        type: 'app.process',
+        id: expect.any(String),
+      });
+      if (!reference) throw new Error('Expected a persisted process reference');
+
+      // The completion is released only after Scheduler has saved its accepted reference.
+      resumeExecution();
+      await processJobFinished;
+      expect(suppressedCompletions).toBe(1);
+      expect(checkExecutions).toBe(1);
+      expect(f.counts.work).toBe(work);
+
+      const restartedJobs = createJobs(appName, 'native-jobs-after-restart');
+      cleanups.push(() => restartedJobs.shutdown());
+      const restartedExecutor = restartedJobs.getJobExecutor('@hr/processes');
+      const restartedScheduler = createScheduler(appName, restartedJobs);
+      const restartedCatalog = new ProcessCatalog(f.handlers);
+      await restartedCatalog.load(f.artifacts);
+      let restartedEnqueues = 0;
+      const enqueueAfterRestart: {
+        current?: (key: string, occurrence?: string) => Promise<void>;
+      } = {};
+      const restartedService = new ProcessService(
+        f.db.connection(),
+        restartedCatalog,
+        f.handlers,
+        f.authorize,
+        async (eventKey, scheduledOccurrenceId) => {
+          restartedEnqueues += 1;
+          if (!enqueueAfterRestart.current)
+            throw new Error('PROCESS_JOBS_NOT_STARTED');
+          await enqueueAfterRestart.current(eventKey, scheduledOccurrenceId);
+        },
+      );
+      let restartedHandle: ScheduleTargetHandle | undefined;
+      const restartedSchedulerBinding: import('@nocobase/app-plugin-scheduler/server/tokens').SchedulerService =
+        {
+          defineSchedule: (definition) =>
+            restartedScheduler.defineSchedule(definition),
+          registerTarget<TConfig extends JsonObject>(
+            target: ScheduleTargetType<TConfig>,
+          ) {
+            restartedHandle = restartedScheduler.registerTarget(target);
+            return restartedHandle;
+          },
+        };
+      enqueueAfterRestart.current = (
+        await bindProcessJobs(
+          restartedService,
+          restartedExecutor,
+          restartedSchedulerBinding,
+          () => 'manager',
+        )
+      ).enqueue;
+
+      const restored = await costs('reconstructed process status query', () =>
+        restartedService.inspect(reference.id),
+      );
+      expect(restored).toMatchObject({
+        state: 'completed',
+        completion: { status },
+      });
+      const recoveredCount = await costs(
+        'native Scheduler occurrence reconciliation',
+        () => restartedScheduler.reconcileOccurrences(),
+      );
+      expect(recoveredCount).toBe(1);
+
+      const terminalStatus: ScheduleExecutionCompletion['status'] =
+        status === 'succeeded' ? 'succeeded' : 'failed';
+      const expected: ScheduleExecutionCompletion = {
+        status: terminalStatus,
+        result: {
+          eventKey: reference.id,
+          status: allow ? 'success' : 'failed',
+        },
+      };
+      await costs('late completion report from original target', async () => {
+        await originalHandle!.reportCompletion(
+          occurrenceId,
+          reference,
+          expected,
+        );
+      });
+      await costs(
+        'duplicate completion report from rebuilt target',
+        async () => {
+          await restartedHandle!.reportCompletion(
+            occurrenceId,
+            reference,
+            expected,
+          );
+        },
+      );
+
+      const wrongTypeError = await costs(
+        'completion report with wrong reference type',
+        async () =>
+          restartedHandle!
+            .reportCompletion(
+              occurrenceId,
+              { type: 'other.process', id: reference.id },
+              {
+                ...expected,
+                status: terminalStatus === 'succeeded' ? 'failed' : 'succeeded',
+              },
+            )
+            .then(
+              () => undefined,
+              (error: unknown) => error,
+            ),
+      );
+      expect(wrongTypeError).toMatchObject({ code: 'REFERENCE_MISMATCH' });
+      const wrongIdError = await costs(
+        'completion report with wrong reference id',
+        async () =>
+          restartedHandle!
+            .reportCompletion(
+              occurrenceId,
+              { type: reference.type, id: 'replacement-reference' },
+              expected,
+            )
+            .then(
+              () => undefined,
+              (error: unknown) => error,
+            ),
+      );
+      expect(wrongIdError).toMatchObject({ code: 'REFERENCE_MISMATCH' });
+      const conflictError = await costs(
+        'completion report with conflicting terminal status',
+        async () =>
+          restartedHandle!
+            .reportCompletion(occurrenceId, reference, {
+              ...expected,
+              status: terminalStatus === 'succeeded' ? 'failed' : 'succeeded',
+            })
+            .then(
+              () => undefined,
+              (error: unknown) => error,
+            ),
+      );
+      expect(conflictError).toMatchObject({ code: 'COMPLETION_CONFLICT' });
+
+      const finalOccurrences = await costs(
+        'native occurrence state after late and invalid reports',
+        () => restartedScheduler.listOccurrences(scheduled[0]!.name),
+      );
+      expect(finalOccurrences.map((item) => item.status)).toEqual([status]);
+      expect(restartedEnqueues).toBe(0);
+      expect(checkExecutions).toBe(1);
+      expect(f.counts.work).toBe(work);
+    } finally {
+      resumeExecution();
+    }
   },
 );
 
