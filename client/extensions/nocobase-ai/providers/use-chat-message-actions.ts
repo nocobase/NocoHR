@@ -37,7 +37,7 @@ export type AIMessageEditingSnapshot = {
 type RefreshConversationMessages = (
   conversationId: string,
   targetChat: Chat<AIChatMessage>,
-  options?: { updateRead?: boolean },
+  options?: { updateRead?: boolean; isCurrent?: () => boolean },
 ) => Promise<AIChatMessage[]>;
 
 const isChatRunning = (chat: Chat<AIChatMessage>) =>
@@ -159,6 +159,7 @@ export function useChatMessageActions({
       conversationId: string,
       targetChat: Chat<AIChatMessage>,
       message: AIChatMessage,
+      isCurrent: () => boolean = () => true,
     ) => {
       let messages = targetChat.messages;
       const resolvedMessage = findChatMessage(messages, message.id);
@@ -177,8 +178,10 @@ export function useChatMessageActions({
             updateRead:
               stateRef.current.activeConversationId === conversationId &&
               chatSurfaceOpenRef.current,
+            isCurrent,
           },
         );
+        if (!isCurrent()) return;
         const refreshedMatch = findChatMessage(messages, message.id);
         const refreshedTarget = refreshedMatch?.targetMessage;
         if (!refreshedTarget) {
@@ -221,8 +224,9 @@ export function useChatMessageActions({
           conversationId,
           activeChat,
           message,
+          () => isCurrentAction(conversationId, actionToken),
         );
-        if (!isCurrentAction(conversationId, actionToken)) return;
+        if (!isCurrentAction(conversationId, actionToken) || !resolved) return;
         if (!resolved.serverMessageId) {
           throw new Error('The server message id is unavailable for retry.');
         }
@@ -289,7 +293,9 @@ export function useChatMessageActions({
           conversationId,
           targetChat,
           message,
+          () => isCurrentAction(conversationId, actionToken),
         );
+        if (!isCurrentAction(conversationId, actionToken) || !resolved) return;
         if (!resolved.serverMessageId) {
           throw new Error(
             'The server message id is unavailable for this tool decision.',
@@ -362,6 +368,7 @@ export function useChatMessageActions({
           toolCallId: decision.toolCallId,
           userDecision,
         });
+        if (!isCurrentAction(conversationId, actionToken)) return;
         if (!result.updated) {
           await refreshConversationMessages(
             resolved.conversationId,
@@ -370,8 +377,10 @@ export function useChatMessageActions({
               updateRead:
                 stateRef.current.activeConversationId ===
                   resolved.conversationId && chatSurfaceOpenRef.current,
+              isCurrent: () => isCurrentAction(conversationId, actionToken),
             },
           );
+          if (!isCurrentAction(conversationId, actionToken)) return;
           return;
         }
 
@@ -392,6 +401,7 @@ export function useChatMessageActions({
         const toolCallIds = result.toolCalls.map((toolCall) => toolCall.id);
         const toolCallResults: Array<{ id: string; result: unknown }> = [];
         for (const toolCall of result.toolCalls) {
+          if (!isCurrentAction(conversationId, actionToken)) return;
           const invocation = await ai.invokeToolCall(
             toolCall.name,
             toolCall.args,
@@ -401,6 +411,7 @@ export function useChatMessageActions({
               toolName: toolCall.name,
             },
           );
+          if (!isCurrentAction(conversationId, actionToken)) return;
           if (invocation.handled) {
             toolCallResults.push({
               id: toolCall.id,
@@ -409,6 +420,7 @@ export function useChatMessageActions({
           }
         }
 
+        if (!isCurrentAction(conversationId, actionToken)) return;
         const transport = transportsRef.current.get(resolved.conversationId);
         if (!transport) {
           throw new Error('The NocoBase chat transport is unavailable.');
@@ -448,8 +460,8 @@ export function useChatMessageActions({
         } catch (error) {
           if (isCurrentAction(conversationId, actionToken)) {
             transport.cancelToolResume(resolved.serverMessageId);
+            removeEmptyResponsePlaceholder(targetChat, responseMessageId);
           }
-          removeEmptyResponsePlaceholder(targetChat, responseMessageId);
           throw error;
         }
       } catch (error) {
@@ -523,8 +535,8 @@ export function useChatMessageActions({
     } catch (error) {
       if (isCurrentAction(conversationId, actionToken)) {
         transport.cancelToolResume(message.metadata!.serverMessageId!);
+        removeEmptyResponsePlaceholder(targetChat, responseMessageId);
       }
-      removeEmptyResponsePlaceholder(targetChat, responseMessageId);
       if (
         isCurrentAction(conversationId, actionToken) &&
         stateRef.current.activeConversationId === conversationId

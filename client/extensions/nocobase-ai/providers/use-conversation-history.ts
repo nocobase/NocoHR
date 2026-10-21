@@ -44,25 +44,38 @@ export function useConversationHistory({
     (
       conversationId: string,
       targetChat: Chat<AIChatMessage>,
-      options: { updateRead?: boolean } = {},
+      options: { updateRead?: boolean; isCurrent?: () => boolean } = {},
     ) => {
       const updateRead = options.updateRead === true;
       const requestKey = `${conversationId}:${updateRead ? 'read' : 'peek'}`;
-      const pending = pendingRequestsRef.current.get(requestKey);
-      if (pending) return pending;
+      let request = pendingRequestsRef.current.get(requestKey);
+      if (!request) {
+        request = getConversationMessages(conversationId, { updateRead });
+        pendingRequestsRef.current.set(requestKey, request);
+        request.then(
+          () => {
+            if (pendingRequestsRef.current.get(requestKey) === request) {
+              pendingRequestsRef.current.delete(requestKey);
+            }
+          },
+          () => {
+            if (pendingRequestsRef.current.get(requestKey) === request) {
+              pendingRequestsRef.current.delete(requestKey);
+            }
+          },
+        );
+      }
 
-      const request = getConversationMessages(conversationId, { updateRead })
-        .then((messages) => {
-          const reconciled = reconcileRefreshedMessages(
-            targetChat.messages,
-            messages,
-          );
-          targetChat.messages = reconciled;
-          return reconciled;
-        })
-        .finally(() => pendingRequestsRef.current.delete(requestKey));
-      pendingRequestsRef.current.set(requestKey, request);
-      return request;
+      return request.then((messages) => {
+        if (options.isCurrent && !options.isCurrent())
+          return targetChat.messages;
+        const reconciled = reconcileRefreshedMessages(
+          targetChat.messages,
+          messages,
+        );
+        targetChat.messages = reconciled;
+        return reconciled;
+      });
     },
     [getConversationMessages],
   );

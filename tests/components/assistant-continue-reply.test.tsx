@@ -458,6 +458,7 @@ describe('saved tool decision continuation', () => {
       expect(f.otherChat.messages).toEqual([message('output-error')]);
       expect(f.chat.messages).toEqual([
         message(kind === 'decision' ? 'output-available' : 'output-error'),
+        expect.objectContaining({ role: 'assistant', parts: [] }),
       ]);
     },
   );
@@ -539,6 +540,73 @@ describe('saved tool decision continuation', () => {
     },
   );
 
+  it('does not truncate a newer reply when an old decision response arrives', async () => {
+    const f = actionFixture();
+    makeDecisionContinue(f);
+    const accepted = f.ai.updateToolCallDecision.getMockImplementation()!;
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    f.ai.updateToolCallDecision.mockImplementation(async (...args) => {
+      await waiting;
+      return accepted(...args);
+    });
+    const latestReply: AIChatMessage = {
+      id: 'newer-reply',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Keep newer reply' }],
+    };
+    f.chat.regenerate.mockImplementation(async () => {
+      f.chat.messages = [...f.chat.messages, latestReply];
+    });
+    const { result } = renderHook(() => useChatMessageActions(f.options));
+
+    const pending = decide(result.current.decideToolCall);
+    await waitFor(() =>
+      expect(f.ai.updateToolCallDecision).toHaveBeenCalledTimes(1),
+    );
+    await act(() => result.current.retryMessage(message('output-error')));
+    expect(f.chat.messages).toContainEqual(latestReply);
+
+    release();
+    await act(() => pending);
+
+    expect(f.chat.messages).toContainEqual(latestReply);
+    expect(f.chat.resumeStream).not.toHaveBeenCalled();
+  });
+
+  it('stops a superseded decision after its tool invocation returns', async () => {
+    const f = actionFixture();
+    makeDecisionContinue(f);
+    let release!: (value: { handled: boolean; result?: unknown }) => void;
+    f.ai.invokeToolCall.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const latestReply: AIChatMessage = {
+      id: 'newer-reply',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Keep newer reply' }],
+    };
+    f.chat.regenerate.mockImplementation(async () => {
+      f.chat.messages = [...f.chat.messages, latestReply];
+    });
+    const { result } = renderHook(() => useChatMessageActions(f.options));
+
+    const pending = decide(result.current.decideToolCall);
+    await waitFor(() => expect(f.ai.invokeToolCall).toHaveBeenCalledTimes(1));
+    await act(() => result.current.retryMessage(message('output-error')));
+    release({ handled: true, result: { completed: true } });
+    await act(() => pending);
+
+    expect(f.chat.messages).toContainEqual(latestReply);
+    expect(f.transport.prepareToolResume).not.toHaveBeenCalled();
+    expect(f.chat.resumeStream).not.toHaveBeenCalled();
+  });
+
   it('does not offer a finished reply or an incompletely decided group', () => {
     expect(getDecidedToolMessage([message('input-available')])).toBeUndefined();
     expect(
@@ -587,6 +655,164 @@ describe('saved tool decision continuation', () => {
     hook.rerender({ open: true });
     await waitFor(() => expect(getState).toHaveBeenCalledTimes(2));
     expect(hook.result.current.pendingConversationId).toBe(f.chat.id);
+    expect(f.chat.resumeStream).not.toHaveBeenCalled();
+  });
+
+  it('does not write a stale history refresh over a newer reply', async () => {
+    const f = actionFixture();
+    let resolveMessages!: (messages: AIChatMessage[]) => void;
+    const getMessages = vi.fn(
+      () =>
+        new Promise<AIChatMessage[]>((resolve) => {
+          resolveMessages = resolve;
+        }),
+    );
+    const getState = vi.fn(async () => 'idle');
+    const hook = renderHook(() =>
+      useConversationHistory({
+        chatSurfaceOpen: false,
+        activeConversationId: f.chat.id,
+        getActiveConversationId: () => f.chat.id,
+        getChat: () => f.chat as never,
+        getTransport: () => f.transport as never,
+        getConversationMessages: getMessages,
+        getConversationActiveState: getState,
+        onMarkRead: vi.fn(),
+        onError: vi.fn(),
+      }),
+    );
+    let current = true;
+    const pending = hook.result.current.refresh(f.chat.id, f.chat as never, {
+      updateRead: true,
+      isCurrent: () => current,
+    });
+    await waitFor(() => expect(getMessages).toHaveBeenCalledTimes(1));
+
+    const latestReply: AIChatMessage = {
+      id: 'newer-reply',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Keep newer reply' }],
+    };
+    f.chat.messages = [latestReply];
+    current = false;
+    await act(async () => {
+      resolveMessages([message('output-error')]);
+      await pending;
+    });
+
+    expect(f.chat.messages).toEqual([latestReply]);
+  });
+
+  it('stops a superseded decision during a coalesced message refresh', async () => {
+    const f = actionFixture();
+    const unresolvedMessage: AIChatMessage = {
+      ...message(),
+      metadata: undefined,
+    };
+    f.chat.messages = [unresolvedMessage];
+    let resolveMessages!: (messages: AIChatMessage[]) => void;
+    const getMessages = vi.fn(
+      () =>
+        new Promise<AIChatMessage[]>((resolve) => {
+          resolveMessages = resolve;
+        }),
+    );
+    const history = renderHook(() =>
+      useConversationHistory({
+        chatSurfaceOpen: false,
+        activeConversationId: f.chat.id,
+        getActiveConversationId: () => f.chat.id,
+        getChat: () => f.chat as never,
+        getTransport: () => f.transport as never,
+        getConversationMessages: getMessages,
+        getConversationActiveState: vi.fn(async () => 'idle'),
+        onMarkRead: vi.fn(),
+        onError: vi.fn(),
+      }),
+    );
+    const actions = renderHook(() =>
+      useChatMessageActions({
+        ...f.options,
+        refreshConversationMessages: history.result.current.refresh,
+      }),
+    );
+    const latestReply: AIChatMessage = {
+      id: 'newer-reply',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Keep newer reply' }],
+    };
+    f.chat.regenerate.mockImplementation(async () => {
+      f.chat.messages = [...f.chat.messages, latestReply];
+    });
+
+    const pendingDecision = decide(actions.result.current.decideToolCall);
+    await waitFor(() => expect(getMessages).toHaveBeenCalledTimes(1));
+    const pendingRetry = actions.result.current.retryMessage(unresolvedMessage);
+    expect(getMessages).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveMessages([message()]);
+      await Promise.all([pendingDecision, pendingRetry]);
+    });
+
+    expect(f.chat.messages).toContainEqual(latestReply);
+    expect(f.ai.updateToolCallDecision).not.toHaveBeenCalled();
+    expect(f.chat.resumeStream).not.toHaveBeenCalled();
+  });
+
+  it('does not write a superseded unsuccessful decision refresh', async () => {
+    const f = actionFixture();
+    f.ai.updateToolCallDecision.mockImplementation(
+      async () => ({ updated: false, toolCalls: [] }) as never,
+    );
+    let resolveMessages!: (messages: AIChatMessage[]) => void;
+    const getMessages = vi.fn(
+      () =>
+        new Promise<AIChatMessage[]>((resolve) => {
+          resolveMessages = resolve;
+        }),
+    );
+    const history = renderHook(() =>
+      useConversationHistory({
+        chatSurfaceOpen: false,
+        activeConversationId: f.chat.id,
+        getActiveConversationId: () => f.chat.id,
+        getChat: () => f.chat as never,
+        getTransport: () => f.transport as never,
+        getConversationMessages: getMessages,
+        getConversationActiveState: vi.fn(async () => 'idle'),
+        onMarkRead: vi.fn(),
+        onError: vi.fn(),
+      }),
+    );
+    const actions = renderHook(() =>
+      useChatMessageActions({
+        ...f.options,
+        refreshConversationMessages: history.result.current.refresh,
+      }),
+    );
+    const latestReply: AIChatMessage = {
+      id: 'newer-reply',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Keep newer reply' }],
+    };
+    f.chat.regenerate.mockImplementation(async () => {
+      f.chat.messages = [...f.chat.messages, latestReply];
+    });
+
+    const pendingDecision = decide(actions.result.current.decideToolCall);
+    await waitFor(() => expect(getMessages).toHaveBeenCalledTimes(1));
+    await act(() =>
+      actions.result.current.retryMessage(message('output-error')),
+    );
+    expect(f.chat.messages).toContainEqual(latestReply);
+
+    await act(async () => {
+      resolveMessages([message('output-error')]);
+      await pendingDecision;
+    });
+
+    expect(f.chat.messages).toContainEqual(latestReply);
     expect(f.chat.resumeStream).not.toHaveBeenCalled();
   });
 
