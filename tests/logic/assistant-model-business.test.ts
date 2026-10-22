@@ -377,7 +377,10 @@ it('does not send pay questions to the Feishu reply model and refuses revoked ac
   expect(f.requests).toHaveLength(1);
 });
 
-async function training(f: Awaited<ReturnType<typeof fixture>>) {
+async function training(
+  f: Awaited<ReturnType<typeof fixture>>,
+  failure?: 'unavailable' | 'invalid' | 'network',
+) {
   await seedBound(f);
   await f.db.repository('employees').createOne({
     values: {
@@ -458,25 +461,32 @@ async function training(f: Awaited<ReturnType<typeof fixture>>) {
     markFallback: vi.fn(),
     recordItems: vi.fn(async () => undefined),
   };
+  const requests: string[] = [];
   const tasks = createTrainingAutomation({
     container: f.container,
     platform: f.platform,
-    structured: async (run, employee, title, prompt, schema) => {
-      const result = await f.runner.structured({
-        userId: run.owner.userId,
-        employee,
-        title,
-        prompt,
-        schema,
-        timeZone: f.platform.timeZone,
-      });
-      run.usedConversation(result.sessionId);
-      return result.data;
+    structured: async () => {
+      throw new Error('Learning plans must not use the legacy generator');
+    },
+    // Business-service boundary double. The native SDK/persistence contract is tested in native-ai.test.ts.
+    structuredPlan: async (_run, _employee, _title, prompt, schema) => {
+      if (failure === 'unavailable')
+        throw new AIUnavailableError('No native model');
+      requests.push(prompt);
+      if (failure === 'network')
+        throw Object.assign(new Error('Controlled network failure'), {
+          status: 503,
+        });
+      if (failure === 'invalid')
+        throw new AIShapeError('Invalid native result');
+      run.usedConversation('native-session');
+      return schema.parse(plan);
     },
     worded: async (_run, compose) => compose(),
   });
-  return { run, tasks };
+  return { run, tasks, requests };
 }
+
 const plan = {
   summary: 'Practice the known skill',
   items: [
@@ -490,10 +500,9 @@ const plan = {
   ],
 };
 
-it('runs the existing gap-plan task as its owner and writes only a validated draft using the actual plan service', async () => {
+it('writes the injected native learning draft as its owner through the actual plan service', async () => {
   const f = await fixture();
   const t = await training(f);
-  f.answers.push({ structured: plan });
   const result = await f.cost('learning-gap-plan', () =>
     t.tasks.gapPlans(t.run),
   );
@@ -506,8 +515,9 @@ it('runs the existing gap-plan task as its owner and writes only a validated dra
     reviewerUserId: 'owner',
   });
   expect(await f.db.repository('assignments').count()).toBe(0);
-  expect(f.requests).toHaveLength(1);
-  expect(JSON.stringify(f.requests)).not.toContain('Outside scope');
+  expect(f.requests).toHaveLength(0);
+  expect(t.requests).toHaveLength(1);
+  expect(JSON.stringify(t.requests)).not.toContain('Outside scope');
   expect(t.run.recordItems).toHaveBeenCalledOnce();
   expect(t.run.usedConversation).toHaveBeenCalledOnce();
   expect(t.run.markFallback).not.toHaveBeenCalled();
@@ -517,18 +527,7 @@ it.each(['unavailable', 'invalid', 'network'] as const)(
   'preserves learning task fallback and failure classification: %s',
   async (kind) => {
     const f = await fixture();
-    const t = await training(f);
-    if (kind === 'unavailable')
-      await f.db.repository('assistantEmployees').updateMany({
-        filter: { id: 'learningCoach' },
-        values: { profile: { username: 'learningCoach', enabled: false } },
-      });
-    if (kind === 'invalid')
-      f.answers.push(
-        { structured: { wrong: true } },
-        { structured: { wrong: true } },
-      );
-    if (kind === 'network') f.answers.push({ status: 503 });
+    const t = await training(f, kind);
     if (kind === 'network') {
       await expect(
         f.cost('learning-network-failure', () => t.tasks.gapPlans(t.run)),
@@ -540,9 +539,8 @@ it.each(['unavailable', 'invalid', 'network'] as const)(
       expect(t.run.markFallback).toHaveBeenCalledOnce();
       expect(await f.db.repository('learningPlans').count()).toBe(1);
     }
-    expect(f.requests).toHaveLength(
-      kind === 'unavailable' ? 0 : kind === 'invalid' ? 2 : 1,
-    );
+    expect(f.requests).toHaveLength(0);
+    expect(t.requests).toHaveLength(kind === 'unavailable' ? 0 : 1);
   },
 );
 

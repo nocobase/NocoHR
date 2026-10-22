@@ -1,3 +1,4 @@
+import agentChat from '../extensions/nocobase-agent-chat/locales/en-US.js';
 import authorizationInspector from './modules/authorization-inspector-en-US.js';
 import defaultAccess from './modules/default-access-en-US.js';
 import sharingRules from './modules/sharing-rules-en-US.js';
@@ -31,6 +32,16 @@ import { payrollOpeningAdditions } from './modules/payroll-opening.js';
 import type { LocaleResource } from '@nocobase/i18n';
 
 const enUS = {
+  ...agentChat,
+  nativeAI: {
+    models: 'Models',
+    title: 'HR assistant',
+    description:
+      'Ask about your own HR information or request a profile correction for HR review.',
+    noModel: 'No AI model configured',
+    noModelHelp:
+      'Ask an authorized administrator to configure and enable a model in Settings → Models.',
+  },
   authorizationInspector,
   defaultAccess,
   sharingRules,
@@ -1588,7 +1599,7 @@ const enUS = {
     learningCenter: 'Learning and training',
     training: 'Training',
     talentMyLearning: 'My learning',
-    talentKnowledgeQa: 'Ask the knowledge base',
+    talentKnowledgeQa: 'HR assistant',
     talentKnowledge: 'Knowledge base',
     talentCourses: 'Courses',
     talentAssignments: 'Assignments',

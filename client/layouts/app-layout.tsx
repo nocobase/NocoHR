@@ -1,3 +1,4 @@
+import { ChatPanel } from '#extensions/nocobase-agent-chat/chat-panel';
 import { useSyncServerLocale } from '@nocobase/app-plugin-i18n/client';
 import { useMemo, type ReactElement } from 'react';
 import type { AppClientRegisteredRoute } from '@nocobase/app-client/plugins';
@@ -82,13 +83,16 @@ export function AppLayout({
               showDev={import.meta.env.DEV}
             />
           </LayoutHeader>
-          <main className='relative min-w-0 flex-1 overflow-hidden'>
-            {/* main only positions; the page scrolls in here, so a child page layer laid over main is neither
+          <div className='relative flex min-h-0 flex-1'>
+            <main className='relative min-w-0 flex-1 overflow-hidden'>
+              {/* main only positions; the page scrolls in here, so a child page layer laid over main is neither
             moved by the page's scrolling nor stretched by its height. */}
-            <div className='h-full overflow-y-auto'>
-              <Outlet />
-            </div>
-          </main>
+              <div className='h-full overflow-y-auto'>
+                <Outlet />
+              </div>
+            </main>
+            <ChatPanel />
+          </div>
           {/* Application addition: phones get a employee tab bar (学习 · 考试 · 问答 · 自助 · 我的) under main, because the
           sidebar drawer is too far away for pages employees open daily. It reads the same authorized items. */}
           <MobileTabBar items={menuItems} />

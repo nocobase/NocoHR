@@ -1,3 +1,4 @@
+import { modelsRoute } from '@nocobase/app-plugin-agents/client/routes';
 import {
   Database,
   Settings,
@@ -20,6 +21,7 @@ const systemSettingsRoutes: AppClientRouteContribution = defineAppRoutes([
     path: '/settings',
     navigation: { title: 'settings.title', icon: Settings, order: 100 },
     children: [
+      { ...modelsRoute, navigation: { title: 'nativeAI.models' } },
       {
         name: 'database-explorer',
         path: '/database-explorer',

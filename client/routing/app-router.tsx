@@ -1,3 +1,4 @@
+import { NativeAIProvider } from '../components/native-ai/provider.js';
 import { useTranslation } from '@nocobase/i18n/client';
 import type { AppClientRegisteredRoute } from '@nocobase/app-client/plugins';
 import { lazy, Suspense, useMemo, type ReactElement } from 'react';
@@ -65,7 +66,10 @@ export function AppRouter(inputProps: AppRouterProps): ReactElement {
           // Carries the requested location to /login and back; see authentication-gates.tsx.
           <RequireSignIn>
             <SessionPreparation>
-              <Outlet />
+              {/* Application providers wrap plugin providers, so identity-bound chat belongs inside the authenticated routes. */}
+              <NativeAIProvider>
+                <Outlet />
+              </NativeAIProvider>
             </SessionPreparation>
           </RequireSignIn>
         }

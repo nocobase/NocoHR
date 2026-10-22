@@ -1,5 +1,6 @@
 import type { ApplicationServiceProviderConstructor } from '@nocobase/app-server/application';
 
+import NativeAIProvider from './native-ai/provider.js';
 import ProcessesProvider from './processes/provider.js';
 import AssistantProvider from './assistant/provider.js';
 import HrProvider from './hr/index.js';
@@ -8,6 +9,7 @@ import GoLiveProvider from './hr/go-live/provider.js';
 
 const serviceProviders: readonly ApplicationServiceProviderConstructor[] = [
   HrProvider,
+  NativeAIProvider,
   GoLiveProvider,
   AssistantProvider,
   ProcessesProvider,

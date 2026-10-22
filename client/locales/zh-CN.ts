@@ -1,3 +1,4 @@
+import agentChat from '../extensions/nocobase-agent-chat/locales/zh-CN.js';
 import authorizationInspector from './modules/authorization-inspector-zh-CN.js';
 import defaultAccess from './modules/default-access-zh-CN.js';
 import sharingRules from './modules/sharing-rules-zh-CN.js';
@@ -31,6 +32,14 @@ import { payrollOpeningAdditions } from './modules/payroll-opening.js';
 import type { AppResource } from './en-US.js';
 
 const zhCN: AppResource = {
+  ...agentChat,
+  nativeAI: {
+    models: '模型设置',
+    title: '人事助手',
+    description: '查询本人信息，或提交资料修改申请交人事审核。',
+    noModel: '尚未配置 AI 模型',
+    noModelHelp: '请联系有权限的管理员，在设置 → 模型设置中配置并启用模型。',
+  },
   authorizationInspector,
   defaultAccess,
   sharingRules,
@@ -1464,7 +1473,7 @@ const zhCN: AppResource = {
     learningCenter: '学习与培训',
     training: '培训管理',
     talentMyLearning: '我的学习',
-    talentKnowledgeQa: '知识问答',
+    talentKnowledgeQa: '人事助手',
     talentKnowledge: '知识库',
     talentCourses: '课程管理',
     talentAssignments: '学习任务',

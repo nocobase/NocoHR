@@ -1,3 +1,4 @@
+import { ChatPanel } from '#extensions/nocobase-agent-chat/chat-panel';
 import { useTranslation } from '@nocobase/i18n/client';
 import type { AppClientRegisteredRoute } from '@nocobase/app-client/plugins';
 import { ArrowLeft } from 'lucide-react';
@@ -126,44 +127,47 @@ export function SettingsLayout({
             showDev={import.meta.env.DEV}
           />
         </LayoutHeader>
-        <main className='relative min-w-0 flex-1 overflow-hidden'>
-          {/* main only positions; the page scrolls in here, so a child page layer laid over main is neither
+        <div className='relative flex min-h-0 flex-1'>
+          <main className='relative min-w-0 flex-1 overflow-hidden'>
+            {/* main only positions; the page scrolls in here, so a child page layer laid over main is neither
             moved by the page's scrolling nor stretched by its height. */}
-          <div className='h-full overflow-y-auto'>
-            <label className='sr-only' htmlFor='surface-page'>
-              {t('surface.page', {
-                title: copy.title,
-                defaultValue: `${copy.title} page`,
-              })}
-            </label>
-            <select
-              id='surface-page'
-              className='m-3 h-9 w-[calc(100%-1.5rem)] min-w-0 rounded-xl border border-border/70 bg-background px-3 text-sm md:hidden'
-              value={
-                visible.find((route) => routeKey(route) === selectedKey)
-                  ?.path ?? ''
-              }
-              onChange={(event) => {
-                void navigate(event.target.value);
-              }}
-            >
-              {visible.map((route) => (
-                <option key={routeKey(route)} value={route.path}>
-                  {t(route.navigation!.title, {
-                    ns: route.packageName,
-                    defaultValue: route.navigation!.title,
-                  })}
-                </option>
-              ))}
-            </select>
-            <RouteTreeProvider routes={allRoutes}>
-              <Routes>
-                {renderRouteTree(routeTree, copy.pathPrefix)}
-                {renderRouteTree(routes, copy.pathPrefix)}
-              </Routes>
-            </RouteTreeProvider>
-          </div>
-        </main>
+            <div className='h-full overflow-y-auto'>
+              <label className='sr-only' htmlFor='surface-page'>
+                {t('surface.page', {
+                  title: copy.title,
+                  defaultValue: `${copy.title} page`,
+                })}
+              </label>
+              <select
+                id='surface-page'
+                className='m-3 h-9 w-[calc(100%-1.5rem)] min-w-0 rounded-xl border border-border/70 bg-background px-3 text-sm md:hidden'
+                value={
+                  visible.find((route) => routeKey(route) === selectedKey)
+                    ?.path ?? ''
+                }
+                onChange={(event) => {
+                  void navigate(event.target.value);
+                }}
+              >
+                {visible.map((route) => (
+                  <option key={routeKey(route)} value={route.path}>
+                    {t(route.navigation!.title, {
+                      ns: route.packageName,
+                      defaultValue: route.navigation!.title,
+                    })}
+                  </option>
+                ))}
+              </select>
+              <RouteTreeProvider routes={allRoutes}>
+                <Routes>
+                  {renderRouteTree(routeTree, copy.pathPrefix)}
+                  {renderRouteTree(routes, copy.pathPrefix)}
+                </Routes>
+              </RouteTreeProvider>
+            </div>
+          </main>
+          <ChatPanel />
+        </div>
       </div>
     </AppSidebarProvider>
   );

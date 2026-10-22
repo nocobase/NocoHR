@@ -1,6 +1,8 @@
 # Template integration status
 
-The fixed target remains `@nocobase/app-template-default@1.0.0-beta.74` with `@nocobase/app-skills@0.1.0-beta.42`. NocoHR now has a native, consistent installation and can run as a complete application on a fresh database. PR #2 remains a draft: management-page migration and installed-data cutover are not complete, so `defaultTemplateVersion` remains `1.0.0-beta.54`.
+The fixed target is now `@nocobase/app-template-default@1.0.0-beta.76` with `@nocobase/app-skills@0.1.0-beta.44`. The [native AI unit](native-ai-unit.md) supersedes the older target and assistant routing for employee chats and learning-plan generation. The application lock and Agents/Foundation registrations follow this target. PR #2 remains a draft: complete template reconciliation, installed-data cutover and remaining callers are not accepted, so `defaultTemplateVersion` remains `1.0.0-beta.54`.
+
+The sections below record the previous `.74` installation and earlier integration history; their verification is not evidence for `.76`. Current project package resolution uses public npm. The old `pkg-v3.nocobase.com` scope returned 401 in the native unit, so its credential-dependent registry setting was replaced rather than reading local credentials.
 
 ## Current native installation and composition
 
