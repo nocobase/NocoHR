@@ -20,7 +20,6 @@ import {
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { useNavigate, useOutletContext, useParams } from 'react-router';
 
-import { Breadcrumbs } from '@/components/breadcrumbs';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { RouteChildPage } from '@/components/route-child-page';
@@ -95,7 +94,6 @@ export default function CourseEditorPage(): ReactElement {
   return (
     <RouteChildPage>
       <PageContainer>
-        <Breadcrumbs />
         {courseId && course.error ? (
           <LoadError error={course.error} onRetry={course.reload} />
         ) : courseId && !course.data ? (

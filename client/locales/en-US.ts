@@ -1515,6 +1515,22 @@ const enUS = {
     emptyTitle: 'No settings available',
     emptyDescription:
       'No enabled plugin contributes a settings page you have access to.',
+    pageAccessHint:
+      'Controls which pages this role can open. Data and actions on each page require their own permissions.',
+    businessOperationsHint:
+      'Choose the operations this role can perform and the data each operation can use.',
+    userAccountsHint:
+      'Manage user information, account security and role assignments. Review each permission separately.',
+    systemToolsHint:
+      'Manage system configuration and tools. Review the capabilities each action includes before granting access.',
+    scopeHintFor: 'About the data range for {{name}}',
+    scopeExplanation:
+      'Each range applies to its corresponding data. The operation must also pass its authorization checks.',
+    noAdditionalScopeHint:
+      'This action grants no additional record access here. Default access, sharing and restriction rules still determine actual access.',
+    dataRanges: 'Data ranges ({{count}})',
+    preservedRecordScope: 'Keep existing configuration',
+    noRecordScope: 'No additional record access',
   },
   dev: {
     componentExamples: 'Component examples',

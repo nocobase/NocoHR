@@ -264,6 +264,83 @@ describe('compact resource actions', () => {
       screen.queryByRole('checkbox', { name: /Select visible/ }),
     ).not.toBeInTheDocument();
   });
+  it('explains data ranges and keeps multiple scope controls available on demand', async () => {
+    const user = userEvent.setup();
+    render(
+      <PermissionEditor
+        sections={[
+          {
+            id: 'business',
+            title: 'Business',
+            description: 'Choose business access.',
+            groups: [
+              {
+                id: 'orders',
+                title: 'Orders',
+                actionHint: 'The listed operations have these checks.',
+                rows: [
+                  {
+                    id: 'edit-orders',
+                    label: 'Edit orders',
+                    enabled: true,
+                    scopes: [
+                      {
+                        id: 'order-records',
+                        label: 'Records',
+                        level: 'mine',
+                        hint: 'Limits which records are available.',
+                        levels: [
+                          { value: 'mine', label: 'Mine' },
+                          { value: 'all', label: 'All' },
+                        ],
+                      },
+                      {
+                        id: 'order-attachments',
+                        label: 'Attachments',
+                        level: 'all',
+                        levels: [
+                          { value: 'mine', label: 'Mine' },
+                          { value: 'all', label: 'All' },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ]}
+        onEnabledChange={vi.fn()}
+        onLevelChange={vi.fn()}
+        labels={{
+          dataRanges: (count) => `Data ranges (${count})`,
+          scopeExplanation: 'Each range applies to its corresponding data.',
+          scopeHintFor: (name) => `About the data range for ${name}`,
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Choose business access.')).toBeVisible();
+    expect(
+      screen.getByText('The listed operations have these checks.'),
+    ).toBeVisible();
+    const ranges = screen.getByText('Data ranges (2)');
+    expect(ranges).toBeVisible();
+    await user.click(ranges);
+    expect(
+      screen.getByText('Each range applies to its corresponding data.'),
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole('button', {
+        name: 'About the data range for Edit orders · Records',
+      }),
+    );
+    expect(
+      await screen.findByRole('tooltip', {
+        name: 'Limits which records are available.',
+      }),
+    ).toBeVisible();
+  });
   it('does not submit an enclosing role form while searching or switching categories', async () => {
     const submit = vi.fn((event) => event.preventDefault());
     render(
@@ -361,6 +438,7 @@ it('keeps multiple inline scopes independently named and editable', async () => 
       onLevelChange={change}
     />,
   );
+  await userEvent.click(screen.getByText('Data ranges (2)'));
   expect(screen.getByText('Records')).toBeVisible();
   expect(screen.getByText('Attachments')).toBeVisible();
   await userEvent.click(

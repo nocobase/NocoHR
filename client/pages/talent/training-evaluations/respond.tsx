@@ -7,7 +7,6 @@ import { useLocale, useTranslation } from '@nocobase/i18n/client';
 import type { ReactElement } from 'react';
 import { useParams } from 'react-router';
 
-import { Breadcrumbs } from '@/components/breadcrumbs';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { RouteChildPage } from '@/components/route-child-page';
@@ -45,7 +44,6 @@ export default function EvaluationRespondPage(): ReactElement {
   return (
     <RouteChildPage>
       <PageContainer>
-        <Breadcrumbs />
         {evaluation.error ? (
           <LoadError error={evaluation.error} onRetry={evaluation.reload} />
         ) : !data ? (

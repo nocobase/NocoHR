@@ -1390,6 +1390,21 @@ const zhCN: AppResource = {
     title: '设置',
     emptyTitle: '暂无可用设置',
     emptyDescription: '没有已启用的插件提供你有权访问的设置页面。',
+    pageAccessHint:
+      '控制此角色可以进入哪些页面。页面中的数据和操作仍需单独授权。',
+    businessOperationsHint:
+      '设置此角色可以执行的业务操作，以及每项操作可使用的数据范围。',
+    userAccountsHint:
+      '管理用户资料、账号安全和角色分配，请逐项确认需要授予的权限。',
+    systemToolsHint: '管理系统配置与工具，授权前请确认每项操作包含的能力。',
+    scopeHintFor: '关于“{{name}}”的数据范围',
+    scopeExplanation:
+      '每项范围分别约束对应数据，实际操作还需通过相应的权限检查。',
+    noAdditionalScopeHint:
+      '此操作在这里不额外授予数据访问权限，实际可访问范围仍取决于默认数据范围、共享与限制规则。',
+    dataRanges: '数据范围（{{count}}）',
+    preservedRecordScope: '保留现有配置',
+    noRecordScope: '不额外授权数据范围',
   },
   dev: {
     componentExamples: '组件示例',

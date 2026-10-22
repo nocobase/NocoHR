@@ -13,7 +13,6 @@ import { CameraIcon, MicIcon, SparklesIcon } from 'lucide-react';
 import { useRef, useState, type ReactElement } from 'react';
 import { useOutletContext, useParams } from 'react-router';
 
-import { Breadcrumbs } from '@/components/breadcrumbs';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { RouteChildPage } from '@/components/route-child-page';
@@ -91,7 +90,6 @@ export default function PracticalRecordPage(): ReactElement {
     return (
       <RouteChildPage>
         <PageContainer>
-          <Breadcrumbs />
           <LoadError error={record.error} onRetry={record.reload} />
         </PageContainer>
       </RouteChildPage>
@@ -129,7 +127,6 @@ export default function PracticalRecordPage(): ReactElement {
   return (
     <RouteChildPage>
       <PageContainer>
-        <Breadcrumbs />
         <PageHeader
           title={t('talentReview.record.title', { name: data.employeeName })}
           description={t('talentReview.record.description', {

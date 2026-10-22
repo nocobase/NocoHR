@@ -41,6 +41,7 @@ describe('settings permission drafts', () => {
     ]);
     expect(original).toEqual([untouched]);
     expect(setPermission(next, resource, 'edit', false)).toEqual([untouched]);
+    expect(setPermission(next, resource, 'edit', true)).toBe(next);
   });
   it('changes one scope without losing a different scope or custom grant', () => {
     const original = [
@@ -73,6 +74,14 @@ describe('settings permission drafts', () => {
     expect(original[0]?.actions[0]?.policy).toMatchObject({
       scopes: { records: 'mine' },
     });
+    const existing = [...original];
+    expect(
+      setScope(
+        existing,
+        JSON.stringify(['composite', 'orders', 'edit', 'records']),
+        'mine',
+      ),
+    ).toBe(existing);
   });
 });
 
@@ -167,4 +176,64 @@ it('replaces a raw collection scope caption with localized data-range text', () 
   expect(result[0]?.groups[0]?.rows[0]?.scopes?.[0]?.label).toBe(
     'Record scope',
   );
+});
+
+it('explains permission sections and preserves a scope value unknown to the current catalog', () => {
+  const scopedResource = {
+    ...resource,
+    actions: [
+      {
+        ...resource.actions[0]!,
+        description: { key: 'orders.actionHint' },
+      },
+      {
+        name: 'export',
+        title: 'Export',
+        description: { key: 'orders.actionHint' },
+      },
+    ],
+  };
+  const catalog = {
+    sections: [
+      {
+        name: 'business',
+        title: 'Business',
+        subsections: [
+          { name: 'orders', title: 'Orders', resources: [scopedResource] },
+        ],
+      },
+    ],
+    recordAccess: [
+      { key: 'mine', title: 'Mine' },
+      { key: 'all', title: 'All' },
+    ],
+  } as unknown as Parameters<typeof permissionSections>[0];
+  const grants = [
+    {
+      resource: { type: 'composite', id: 'orders' },
+      actions: [
+        {
+          action: 'edit',
+          policy: { type: 'composite', scopes: { records: 'legacy-range' } },
+        },
+      ],
+    },
+  ];
+  const result = permissionSections(catalog, grants, (value) =>
+    typeof value === 'string' ? value : value.key,
+  );
+  const section = result[0]!;
+  const group = section.groups[0]!;
+  const row = group.rows[0]!;
+  expect(section.description).toBe('settings.businessOperationsHint');
+  expect(group.actionHint).toBe('orders.actionHint');
+  expect(row.scopes?.[0]).toMatchObject({
+    level: 'legacy-range',
+    hint: undefined,
+  });
+  expect(row.scopes?.[0]?.levels[0]).toEqual({
+    value: 'legacy-range',
+    label: 'settings.preservedRecordScope',
+  });
+  expect(setScope(grants, row.scopes![0]!.id, 'legacy-range')).toBe(grants);
 });

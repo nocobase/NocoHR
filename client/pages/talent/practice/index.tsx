@@ -13,7 +13,6 @@ import {
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 
-import { Breadcrumbs } from '@/components/breadcrumbs';
 import { PageContainer } from '@/components/page-container';
 import { PageHeader } from '@/components/page-header';
 import { errorMessage } from '@/components/talent/errors';
@@ -58,7 +57,6 @@ export default function PracticePage(): ReactElement {
   );
   return (
     <PageContainer>
-      <Breadcrumbs />
       {practice.error ? (
         <LoadError error={practice.error} onRetry={practice.reload} />
       ) : !practice.data ? (

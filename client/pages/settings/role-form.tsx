@@ -346,6 +346,9 @@ function RoleEditor(): ReactElement {
                   selectVisible: (name) =>
                     t('settings.selectVisiblePermissions', { name }),
                   levelFor: (name) => t('settings.levelFor', { name }),
+                  dataRanges: (count) => t('settings.dataRanges', { count }),
+                  scopeExplanation: t('settings.scopeExplanation'),
+                  scopeHintFor: (name) => t('settings.scopeHintFor', { name }),
                   search: t('settings.permissionSearch'),
                   enabledOnly: t('settings.enabledOnly'),
                   clear: t('settings.clear'),
