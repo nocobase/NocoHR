@@ -2548,6 +2548,99 @@ describe('native AI application composition', () => {
               .findOne({ filter: { id: suffix } })
           )?.mobile,
         ).toBe('13800000000');
+        if (outcome === 'expired' || outcome === 'rebound') {
+          const currentExternal =
+            outcome === 'rebound' ? external + '-new' : external;
+          const oldSession = await online.realtime(
+            await actorContext(user.id),
+            { sessionId },
+          );
+          const oldHistory = await oldSession.history();
+          const oldMetadata = (await app.connection
+            .repository('agConversations')
+            .findOne({
+              filter: { id: sessionId },
+              select: (select) => select.fields('metadata'),
+            }))!.metadata;
+          const freshInput = {
+            ...incoming,
+            senderExternalId: currentExternal,
+            messageId: suffix + '-fresh-message',
+            text: '请读取我当前的档案',
+          };
+          // Neither expired waiting nor a new binding permits revoked users to create a replacement.
+          await authz.permissionSets.revoke(assignment.id);
+          const beforeUnauthorized = calls;
+          const beforeOpen = start.mock.calls.length;
+          await expect(
+            cost('im-fresh-revoked-' + outcome, () =>
+              channel.handle({
+                ...freshInput,
+                messageId: suffix + '-fresh-revoked',
+              }),
+            ),
+          ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+          expect(calls).toBe(beforeUnauthorized);
+          expect(start).toHaveBeenCalledTimes(beforeOpen);
+          await authz.permissionSets.assign({
+            subject: { type: 'user', id: user.id },
+            permissionSet: suffix,
+          });
+          text = 'Fresh authorized response';
+          tool = { name: 'getMyHrProfile', args: '{}' };
+          const next = await cost('im-fresh-message-' + outcome, () =>
+            channel.handle(freshInput),
+          );
+          expect(next.cards ?? []).not.toContain(answer.cards![0]);
+          expect(next.reply).toContain('Fresh authorized response');
+          expect(next.handledBy).toBe('hrAssistant');
+          expect(start.mock.calls.at(-1)?.[1]?.sessionId).toBeUndefined();
+          const replacement = await start.mock.results.at(-1)!.value;
+          expect(replacement.sessionId).not.toBe(sessionId);
+          const newHistory = JSON.stringify(await replacement.history());
+          expect(newHistory).toContain('请读取我当前的档案');
+          expect(newHistory).not.toContain('请修改我的手机号');
+          expect(newHistory).toContain('tool-getMyHrProfile');
+          expect(newHistory).not.toContain('tool-submitMyProfileChange');
+          expect(await oldSession.history()).toEqual(oldHistory);
+          expect(
+            (await app.connection.repository('agConversations').findOne({
+              filter: { id: sessionId },
+              select: (select) => select.fields('metadata'),
+            }))!.metadata,
+          ).toEqual(oldMetadata);
+          expect(
+            await app.connection.repository('imCards').findOne({
+              filter: { id: answer.cards![0] },
+            }),
+          ).toMatchObject({ status: 'open' });
+          expect(write).not.toHaveBeenCalled();
+          // A generic restore denial must propagate, with no replacement admission or retry.
+          const denied = Object.assign(new Error('Controlled restore denial'), {
+            status: 403,
+          });
+          start.mockRejectedValueOnce(denied);
+          const beforeDenied = calls;
+          await expect(
+            cost('im-restore-denied-' + outcome, () =>
+              channel.handle({
+                ...freshInput,
+                messageId: suffix + '-restore-denied',
+                text: '那个结果呢',
+              }),
+            ),
+          ).rejects.toBe(denied);
+          expect(calls).toBe(beforeDenied);
+          await channel.handle({
+            ...freshInput,
+            messageId: suffix + '-restore-after-denied',
+            text: '那个结果呢',
+          });
+          expect(start.mock.calls.at(-1)?.[1]?.sessionId).toBe(
+            replacement.sessionId,
+          );
+          expect(write).not.toHaveBeenCalled();
+        }
         const afterDecision = calls;
         expect(
           await cost('im-callback-duplicate', () =>

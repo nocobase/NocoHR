@@ -33,7 +33,7 @@ import type {
 import {
   openIMSession,
   consumeIMResponse,
-  pendingIMApprovals,
+  currentIMApprovals,
   imResponseText,
 } from '../native-ai/im-session.js';
 import {
@@ -142,11 +142,9 @@ export function createImChannel(deps: {
     userId: string,
     provider: IncomingMessage['provider'],
   ) {
+    const state = await currentIMApprovals(database, userId, session);
     const ids: string[] = [];
-    for (const pending of pendingIMApprovals(
-      session.sessionId,
-      await session.history(),
-    )) {
+    for (const pending of state.pending) {
       const parsed = isRecord(pending.input)
         ? pending.input.changes
         : undefined;
@@ -186,7 +184,7 @@ export function createImChannel(deps: {
       });
       if (sent.status !== 'notBound') ids.push(sent.cardId);
     }
-    return ids;
+    return { expired: state.expired, cards: ids };
   }
   cards.register(
     nativeApprovalCardKind({
@@ -218,7 +216,10 @@ export function createImChannel(deps: {
     warn: deps.warn,
   });
   // One conversation per user and channel, kept in memory: a restart starts a new one.
-  const sessions = new Map<string, string>();
+  const sessions = new Map<
+    string,
+    { sessionId: string; externalUserId: string }
+  >();
   /** Who answered a member last, and when: a follow-up (“那张已经撤销了，请重新起草”) stays with them. */
   const lastTurn = new Map<string, { employee: string; at: number }>();
   const hooks: BotTurnHook[] = [];
@@ -379,18 +380,49 @@ export function createImChannel(deps: {
         const modelAvailable = await deps.modelAvailable();
         if (!sessions.has(sessionKey) && !modelAvailable)
           throw new AIUnavailableError('No enabled native chat model');
-        const session = await openIMSession(
+        let previousSession = sessions.get(sessionKey);
+        if (
+          previousSession &&
+          previousSession.externalUserId !== message.senderExternalId
+        ) {
+          // userOf and current use were checked above. Only a verified new binding
+          // releases the memory reference; access/owner/configuration errors still propagate.
+          if (
+            (await cards.bindings.externalOf(message.provider, userId)) !==
+            message.senderExternalId
+          )
+            throw new HrError('FORBIDDEN', 403);
+          sessions.delete(sessionKey);
+          previousSession = undefined;
+        }
+        let session = await openIMSession(
           deps.online(),
           ctx,
           {
             provider: message.provider,
             externalUserId: message.senderExternalId,
           },
-          sessions.get(sessionKey),
+          previousSession?.sessionId,
         );
-        sessions.set(sessionKey, session.sessionId);
-        // An existing native approval stays bound to this session; a new input never resumes it.
-        let pending = await publishApprovals(session, userId, message.provider);
+        // Only a confirmed expired approval releases the old reference. Preserve its
+        // execution/history and card; this input starts independently, with no old input replay.
+        let state = await publishApprovals(session, userId, message.provider);
+        if (state.expired) {
+          sessions.delete(sessionKey);
+          if (!modelAvailable)
+            throw new AIUnavailableError('No enabled native chat model');
+          session = await openIMSession(deps.online(), ctx, {
+            provider: message.provider,
+            externalUserId: message.senderExternalId,
+          });
+          state = { expired: false, cards: [] };
+        }
+        sessions.set(sessionKey, {
+          sessionId: session.sessionId,
+          externalUserId: message.senderExternalId,
+        });
+        // A currently valid approval stays bound; a new input never resumes it.
+        let pending = state.cards;
         if (!pending.length) {
           if (!modelAvailable)
             throw new AIUnavailableError('No enabled native chat model');
@@ -403,7 +435,8 @@ export function createImChannel(deps: {
             ]);
             await consumeIMResponse(session);
           });
-          pending = await publishApprovals(session, userId, message.provider);
+          pending = (await publishApprovals(session, userId, message.provider))
+            .cards;
         }
         if (pending.length)
           return {

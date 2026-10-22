@@ -4,6 +4,7 @@ import type {
   AppUIMessage,
 } from '@nocobase/app-plugin-agents/server/online-agent';
 import { z } from 'zod';
+import type { DatabaseManager } from '@nocobase/db';
 import type { ActorContext } from '../hr/framework-service.js';
 import { authorizeAction } from '../hr/authorize.js';
 import { HrError } from '../hr/shared.js';
@@ -109,6 +110,68 @@ export function pendingIMApprovals(sessionId: string, history: AppUIMessage[]) {
       ];
     });
   });
+}
+
+/** Read-only adapter for the pinned Agents metadata v1; public status omits approval expiry. */
+export async function currentIMApprovals(
+  database: DatabaseManager,
+  userId: string,
+  session: RealtimeOnlineAgent,
+) {
+  const candidates = pendingIMApprovals(
+    session.sessionId,
+    await session.history(),
+  );
+  if (!candidates.length) return { expired: false, pending: candidates };
+  // The caller has opened this owned HR session; still constrain this read by owner.
+  // Never infer effective waiting from historical approval-requested parts alone.
+  const row = await database
+    .connection()
+    .repository('agConversations')
+    .findOne({
+      filter: { id: session.sessionId, userId },
+      select: (select) => select.fields('metadata'),
+    });
+  if (!row) throw new HrError('FORBIDDEN', 403);
+  const metadata: unknown =
+    typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+  const {
+    onlineAgent: { call },
+  } = z
+    .object({
+      onlineAgent: z.object({
+        version: z.literal(1),
+        kind: z.literal('realtime'),
+        call: z
+          .object({
+            actorId: z.string(),
+            state: z.enum(['running', 'idle', 'waitingApproval']),
+            closing: z.boolean().optional(),
+            messageId: z.string().optional(),
+            executionId: z.string().optional(),
+            approvalExpiresAt: z.iso.datetime().optional(),
+          })
+          .nullable(),
+      }),
+    })
+    .parse(metadata);
+  if (call && call.actorId !== userId) throw new HrError('FORBIDDEN', 403);
+  if (!call || call.state !== 'waitingApproval' || call.closing)
+    return { expired: false, pending: [] };
+  // Missing/unknown state fails closed, rather than discarding a possibly valid wait.
+  if (!call.approvalExpiresAt || !call.messageId || !call.executionId)
+    throw new Error('Native IM approval state is incomplete');
+  const expired = Date.parse(call.approvalExpiresAt) <= Date.now();
+  return {
+    expired,
+    pending: expired
+      ? []
+      : candidates.filter(
+          (item) =>
+            item.messageId === call.messageId &&
+            item.executionId === call.executionId,
+        ),
+  };
 }
 
 export function imResponseText(history: AppUIMessage[]) {

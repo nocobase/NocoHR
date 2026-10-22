@@ -64,14 +64,14 @@ The approved minimal mapping is implemented in existing card payloads. No new ta
 - The callback retains its signature, timestamp, `cardId/button`, recipient and event deduplication checks. A native card additionally requires its original external addressee to remain bound in both directions to the current user. Restore checks native ownership and saved channel origin. The exact pending tuple is matched before official atomic `approve`, which also checks waiting state and expiry. Business tools resolve current authorization and current binding again.
 - An approved profile tool calls the existing HR request service with trusted `feishuCard` source. It creates one pending HR-review request, never changes the employee record. Source identity comes from an internal server context, not tool parameters. In-app submissions and historical cards retain their existing source and behavior.
 - Accepted decisions remain accepted if the following model turn, send or card update fails; callbacks cannot replay the business tool. This keeps existing at-most-once processing semantics; no automatic redelivery/recovery has been added.
-- The existing user/provider/route memory map holds native IDs. Restore reads native history without resending input. Referring followups reuse the conversation; while waiting they return the same card without adding a user turn. A fresh channel instance can restore a pending card from payload. New messages after a restart still start a new conversation.
+- The existing user/provider/route memory map holds native IDs and their verified external addressees. Restore reads native history without resending input. Referring followups reuse the conversation; while waiting they return the same card without adding a user turn. A fresh channel instance can restore a pending card from payload. The test recreates the channel service/clears its maps while retaining the same application and OnlineAgent; full process restart is unverified. New messages after service recreation start a new conversation.
 - Creation alone supplies trusted business context. Adding that context on restore would append a new user message after the SDK approval response and prevent continuation; actual composition tests caught this and the adapter now omits it on restore/approval.
 - Live model responses have a 120-second cancellation budget and awaited abort/finalization. The timer is cleared when the response closes for approval; waiting for a person follows official approval expiry. Expired/stopped cards are refused by native state; the historical application card can remain visually open. No extra expiry cleanup or recovery design is introduced.
 - Native services are resolved lazily by the HR channel to respect plugin boot ordering. Old standalone HR suites initially exposed shutdown hook timeouts with eager resolution; the lazy binding removes that lifecycle-order issue without changing runtime lifecycle implementation.
 
 ### Verified behavior and boundaries
 
-- Native composition: **83 passed**, including all prior 65 cases. The added matrix covers approve/reject, simultaneous and repeated callback IDs, all four incorrect IDs, wrong user/rebinding, revoked use, expiry, stopped execution, failed continuation, restart restore, restricted entry, masking/read/followup/pay routing and live-stream timeout.
+- Native composition: **83 passed**, including all prior 65 cases. The added matrix covers approve/reject, simultaneous and repeated callback IDs, all four incorrect IDs, wrong user/rebinding, revoked use, expiry, stopped execution, failed continuation, channel-service recreation/old-card restore, restricted entry, masking/read/followup/pay routing and live-stream timeout.
 - Approve/reject traverse the real signed HTTP callback. Missing signatures and stale timestamps are refused. A 25-hour Date shift tests official expiry; a 300 ms response budget tests actual HTTP stream closure and native idle/cancelled state. No multi-minute CI wait or production scheduler runs.
 - The actual Feishu transport runs against a controlled local message API with production-equivalent external-message-ID SQL. One card is inserted/sent, the ID is written back, approval writes one HR request, then one text and one card PATCH are emitted. No tenant credentials are read and no real user receives a message.
 - The final six-file related selection: **122 passed / 1 failed**, solely the retained notification-management assertion. The native file passes all 83 cases. The isolated attendance after-turn hook passes (part of a 10-case lifecycle-order selection); its response facade tests the business hook only, not native protocol acceptance. Older fake-runner channel tests were replaced by the real native cases; historical card/transport behavior remains exercised.
@@ -104,9 +104,38 @@ All listed branches issue no DELETE. A revoked callback used zero models, 18 SEL
 
 Prior routing/bill costs above remain separate historical captures. Native failure sessions can still lack a task-side conversation ID; notification failure and this existing tracing boundary are retained. Production activation, Knowledge, Workflow, installed-database checks/backup restore and full template reconciliation remain separate gates.
 
+## Expired approval and verified rebinding
+
+A new authorized input can now start a usable conversation after its cached approval expires or its legitimate external binding changes. Old native executions, business records and cards remain intact; the new turn does not resend old input or approve an old tool.
+
+- Before reuse, a changed external sender must resolve to the same current NocoHR user and match the reverse binding; current chat-use authorization is checked before any replacement. Other restore/ownership/configuration errors propagate without clearing the map or retrying admission.
+- Public `status()` reports occupancy but does not expose approval expiry in Agents `.18`. When public history contains approval candidates, a read-only adapter fetches existing metadata v1 with an owner-filtered Repository query, matches the current execution/message, and checks the official `approvalExpiresAt`. No candidate means no added metadata query. Unknown/incomplete state fails closed. This fixed-version metadata boundary must be reconciled on a future Agents upgrade.
+- A confirmed expired wait releases only the cached reference; the old execution/history is neither stopped nor rewritten. A new conversation uses only the newly authorized input. A currently valid wait still returns its original card without a new model call; the official atomic approval remains authoritative if state changes between reads.
+- The two independent fresh-message regressions fail on `8677cb3`: one returns the original expired card and the other throws FORBIDDEN after legal rebinding. They pass after the fix. Expanded assertions cover a real profile read in the new session, preserved old history/metadata/card and no HR writes; revoked users cannot reach native admission. An injected generic restore denial is propagated unchanged, and a later valid input still reuses its cached session.
+- This fix selection has **111 passed** across native composition, historical cards, transport and components; the native file retains **83 passing cases** with expanded assertions in the two previously failing matrix entries. Existing approve/reject, deduplication, ownership, cancellation and human-wait regressions pass. The preceding 122 passed / 1 failed selection is historical evidence; its known notification assertion was not rerun or reclassified. Failed-task tracing retains its existing boundary. No page, install or full build was repeated.
+
+### Incremental cost
+
+The added expiry query is one SELECT only when history contains a candidate approval, including the card proposal and a followup during human waiting. It adds no write, transaction, model request, poll or runner operation. Confirming a changed binding adds one reverse-binding SELECT on that branch. New conversations then incur their ordinary native/model/persistence costs; these are not free recovery operations.
+
+| Complete operation                                             | Models | SELECT | INSERT | UPDATE | Transactions |
+| -------------------------------------------------------------- | -----: | -----: | -----: | -----: | -----------: |
+| New profile-read input after expiry, routing included          |      3 |    194 |      7 |     10 |            7 |
+| New profile-read input after legal rebinding, routing included |      3 |    185 |      7 |     10 |            7 |
+| New input after either condition while use is revoked          |      0 |      9 |      1 |      0 |            0 |
+| Injected ordinary restore denial, each                         |      0 |     30 |      1 |      0 |            0 |
+| Valid pending followup                                         |      0 |     42 |      1 |      0 |            0 |
+
+These branches issue no DELETE. The two successful fresh-input operations use one classifier request, one profile-tool proposal and one final answer. Native conversation storage has two INSERTs (classifier plus replacement conversation); message storage has four INSERTs. The other INSERT is existing incoming-event deduplication. No card or HR request is inserted or updated. Revoked/denied branches have no native conversation/message writes; their one INSERT is event audit. A valid wait's extra SELECT is visible against the previous 41-read capture, with no added writes/model requests. The proposal now observes 184 SELECTs versus 183 previously, with the same writes; signed approval remains 157 SELECT / 6 INSERT / 11 UPDATE / 6 transactions and one model request. Cache/async variation is not a performance gain.
+
+Measured complete fresh-input and denied branches are recorded with the delivery's cost JSON. Model/SQL totals include routing, existing deduplication, native conversation/messages and business authorization; fixture permission removal/reassignment and assertions are excluded. Original approval/bill costs above are historical captures, not a fixed budget or an additive estimate for this fix.
+
 ## Reproduce
 
 ```bash
+# Current invalidated-session fix selection (111 passing cases):
+pnpm exec vitest run tests/logic/native-ai.test.ts tests/logic/v1-feishu-cards.test.ts tests/logic/feishu-bot.test.ts tests/components/im-cards.test.tsx --disableConsoleIntercept
+# Historical wider routing/bill checks; notification assertion remains a known failure:
 pnpm exec vitest run tests/logic/native-ai.test.ts tests/logic/assistant-model-business.test.ts tests/logic/plugin-page-authz.test.ts tests/logic/ai-entry-route-text.test.ts --disableConsoleIntercept
 pnpm exec vitest run tests/logic/v2-payroll.test.ts -t 'V2-06 vendor bill' --disableConsoleIntercept
 pnpm exec vitest run tests/logic/v1-feishu-cards.test.ts tests/logic/feishu-bot.test.ts tests/components/im-cards.test.tsx --disableConsoleIntercept
