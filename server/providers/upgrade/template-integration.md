@@ -4,6 +4,8 @@ The fixed target is now `@nocobase/app-template-default@1.0.0-beta.76` with `@no
 
 The sections below record the previous `.74` installation and earlier integration history; their verification is not evidence for `.76`. Current project package resolution uses public npm. The old `pkg-v3.nocobase.com` scope returned 401 in the native unit, so its credential-dependent registry setting was replaced rather than reading local credentials.
 
+The focused `.74 → .76` client type and pagination merge is recorded in [client-pagination-unit.md](client-pagination-unit.md). It does not advance the application marker or close the remaining upgrade gates.
+
 ## Current native installation and composition
 
 - The project registry is public npm for ordinary packages and `https://pkg-v3.nocobase.com/` for `@nocobase`. Credentials remain in local npm configuration. The generated lockfile contains no `npm.nocobase.ai` URL.
