@@ -60,6 +60,7 @@ let calls = 0;
 const requests: { tools?: unknown[]; messages?: unknown[] }[] = [];
 let tool: { name: string; args: string } | undefined;
 let hold = false;
+let heldStream: { opened(): void; closed(): void } | undefined;
 let fail = false;
 const model = createServer(async (req, res) => {
   let raw = '';
@@ -105,6 +106,8 @@ const model = createServer(async (req, res) => {
       chunk(message);
     }
     if (hold) {
+      res.once('close', () => heldStream?.closed());
+      heldStream?.opened();
       return;
     }
     chunk({}, 'stop');
@@ -995,7 +998,13 @@ describe('native AI application composition', () => {
     expect(payload).toContain('apiKeySet');
   });
 
-  it.each(['valid', 'no-model', 'invalid', 'model-failure'] as const)(
+  it.each([
+    'valid',
+    'no-model',
+    'invalid',
+    'model-failure',
+    'timeout',
+  ] as const)(
     'uses the production ordinary task connection with native output: %s',
     async (outcome) => {
       const container = app.application.container;
@@ -1052,26 +1061,55 @@ describe('native AI application composition', () => {
       if (outcome === 'no-model')
         await services.update(service.name, { enabled: false });
       fail = outcome === 'model-failure';
+      hold = outcome === 'timeout';
+      const opened = Promise.withResolvers<void>();
+      const closed = Promise.withResolvers<void>();
+      if (hold) heldStream = { opened: opened.resolve, closed: closed.resolve };
       const before = calls;
       const native = container.resolve(agentsToken).onlineAgent;
       const original = native.background.bind(native);
       let sessionId: string | undefined;
+      let active: Awaited<ReturnType<typeof original>> | undefined;
       const background = vi
         .spyOn(native, 'background')
         .mockImplementation(async (...args) => {
           const session = await original(...args);
           sessionId = session.sessionId;
+          active = session;
+          if (outcome === 'timeout') {
+            const observe = session.try.bind(session);
+            vi.spyOn(session, 'try').mockImplementation((options) => {
+              // Keep production composition and its 120 s default; shorten only
+              // the official observation budget instead of waiting two minutes.
+              expect(options?.wait).toBeGreaterThan(110_000);
+              return observe({ wait: 300 });
+            });
+          }
           return session;
         });
+      let finished = false;
+      const pending = cost('ordinary-production-' + outcome, () =>
+        container
+          .resolve(automationTasksToken)
+          .runScheduled('frameworkAdvisor.dictionaryReview', 'manual'),
+      ).finally(() => {
+        finished = true;
+      });
       try {
-        const result = await cost('ordinary-production-' + outcome, () =>
-          container
-            .resolve(automationTasksToken)
-            .runScheduled('frameworkAdvisor.dictionaryReview', 'manual'),
-        );
+        if (outcome === 'timeout') {
+          await opened.promise;
+          await vi.waitFor(() => expect(finished).toBe(true), {
+            timeout: 2000,
+          });
+          await closed.promise;
+          expect(await active!.status()).toBe('idle');
+        }
+        const result = await pending;
         expect(calls - before).toBe(outcome === 'no-model' ? 0 : 1);
         expect(result.status).toBe(
-          outcome === 'model-failure' ? 'failed' : 'succeeded',
+          outcome === 'model-failure' || outcome === 'timeout'
+            ? 'failed'
+            : 'succeeded',
         );
         const run = await app.connection
           .repository('aiTaskRuns')
@@ -1082,6 +1120,10 @@ describe('native AI application composition', () => {
         expect(run?.conversationSessionId).toBe(
           outcome === 'valid' ? sessionId : null,
         );
+        if (outcome === 'timeout') {
+          expect(run?.error).toBe('The operation timed out');
+          expect(run?.finishedAt).toBeTruthy();
+        }
         if (outcome === 'valid') {
           expect(JSON.stringify(run?.output)).toContain('Ask its owner');
           expect(requests.at(-1)?.tools ?? []).toHaveLength(0);
@@ -1091,7 +1133,11 @@ describe('native AI application composition', () => {
             .resolve(agentsToken)
             .conversations.get(actor.user.id, sessionId);
           expect(saved.execution?.outcome).toBe(
-            outcome === 'valid' ? 'completed' : 'failed',
+            outcome === 'valid'
+              ? 'completed'
+              : outcome === 'timeout'
+                ? 'cancelled'
+                : 'failed',
           );
         }
         expect(
@@ -1101,6 +1147,10 @@ describe('native AI application composition', () => {
         ).toEqual(position);
       } finally {
         fail = false;
+        hold = false;
+        if (!finished) await active?.abort();
+        await pending;
+        heldStream = undefined;
         background.mockRestore();
         if (outcome === 'no-model')
           await services.update(service.name, { enabled: true });
@@ -1462,6 +1512,176 @@ describe('native AI application composition', () => {
       }
     },
   );
+  it.each(['deadline', 'caller'] as const)(
+    'finalizes a stalled ordinary generation before rejecting: %s',
+    async (kind) => {
+      const online = app.application.container.resolve(agentsToken).onlineAgent;
+      const original = online.background.bind(online);
+      let active: Awaited<ReturnType<typeof original>> | undefined;
+      const background = vi
+        .spyOn(online, 'background')
+        .mockImplementation(async (...args) => {
+          active = await original(...args);
+          return active;
+        });
+      const opened = Promise.withResolvers<void>();
+      const closed = Promise.withResolvers<void>();
+      heldStream = { opened: opened.resolve, closed: closed.resolve };
+      hold = true;
+      text = '{"ok":true}';
+      const controller = new AbortController();
+      const reason = new Error('Controlled caller cancellation');
+      const add = vi.spyOn(controller.signal, 'addEventListener');
+      const remove = vi.spyOn(controller.signal, 'removeEventListener');
+      let finished = false;
+      let rejection: unknown;
+      const before = calls;
+      const pending = cost('ordinary-stalled-' + kind, () =>
+        createNativeStructuredAI(app.application.container).structured({
+          employee: 'controlled',
+          userId: actor.user.id,
+          authorization: actor.authorization,
+          title: 'Stalled generation',
+          prompt: 'Return JSON',
+          schema: z.object({ ok: z.boolean() }),
+          timeZone: 'UTC',
+          timeoutMs: kind === 'deadline' ? 500 : 120_000,
+          signal: controller.signal,
+        }),
+      ).then(
+        () => {
+          finished = true;
+        },
+        (error: unknown) => {
+          rejection = error;
+          finished = true;
+        },
+      );
+      try {
+        await opened.promise;
+        if (kind === 'caller') controller.abort(reason);
+        await vi.waitFor(() => expect(finished).toBe(true), { timeout: 2000 });
+        await closed.promise;
+        if (kind === 'caller') expect(rejection).toBe(reason);
+        else expect(rejection).toMatchObject({ name: 'TimeoutError' });
+        expect(await active!.status()).toBe('idle');
+        const saved = await app.application.container
+          .resolve(agentsToken)
+          .conversations.get(actor.user.id, active!.sessionId);
+        expect(saved.execution?.outcome).toBe('cancelled');
+        expect(calls - before).toBe(1);
+        expect(remove).toHaveBeenCalledWith('abort', add.mock.calls[0]![1]);
+      } finally {
+        hold = false;
+        if (!finished) await active?.abort();
+        await pending;
+        heldStream = undefined;
+        background.mockRestore();
+        add.mockRestore();
+        remove.mockRestore();
+      }
+    },
+  );
+  it('preserves a native model failure when caller cancellation arrives with its outcome', async () => {
+    const online = app.application.container.resolve(agentsToken).onlineAgent;
+    const original = online.background.bind(online);
+    const controller = new AbortController();
+    const reason = new Error('Cancellation after model failure');
+    const background = vi
+      .spyOn(online, 'background')
+      .mockImplementation(async (...args) => {
+        const session = await original(...args);
+        const observe = session.try.bind(session);
+        vi.spyOn(session, 'try').mockImplementation(async (options) => {
+          const result = await observe(options);
+          controller.abort(reason);
+          return result;
+        });
+        return session;
+      });
+    fail = true;
+    try {
+      await expect(
+        createNativeStructuredAI(app.application.container).structured({
+          employee: 'controlled',
+          userId: actor.user.id,
+          authorization: actor.authorization,
+          title: 'Failing generation',
+          prompt: 'Return JSON',
+          schema: z.object({ ok: z.boolean() }),
+          timeZone: 'UTC',
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ reason: 'failed', code: 'EXECUTION_FAILED' });
+    } finally {
+      fail = false;
+      background.mockRestore();
+    }
+  });
+  it('rejects an already cancelled ordinary call before model probing or storage', async () => {
+    const controller = new AbortController();
+    const reason = new Error('Cancelled before generation');
+    controller.abort(reason);
+    await expect(
+      cost('ordinary-pre-cancelled', () =>
+        createNativeStructuredAI(app.application.container).structured({
+          employee: 'controlled',
+          userId: actor.user.id,
+          authorization: actor.authorization,
+          title: 'Cancelled generation',
+          prompt: 'Return JSON',
+          schema: z.object({ ok: z.boolean() }),
+          timeZone: 'UTC',
+          signal: controller.signal,
+        }),
+      ),
+    ).rejects.toBe(reason);
+  });
+  it('releases ordinary wait listeners and keeps completed output after the deadline and later cancellation', async () => {
+    const online = app.application.container.resolve(agentsToken).onlineAgent;
+    const original = online.background.bind(online);
+    let active: Awaited<ReturnType<typeof original>> | undefined;
+    let abort: ReturnType<typeof vi.spyOn> | undefined;
+    const background = vi
+      .spyOn(online, 'background')
+      .mockImplementation(async (...args) => {
+        active = await original(...args);
+        abort = vi.spyOn(active, 'abort');
+        return active;
+      });
+    const controller = new AbortController();
+    const add = vi.spyOn(controller.signal, 'addEventListener');
+    const remove = vi.spyOn(controller.signal, 'removeEventListener');
+    text = '{"ok":true}';
+    try {
+      const result = await createNativeStructuredAI(
+        app.application.container,
+      ).structured({
+        employee: 'controlled',
+        userId: actor.user.id,
+        authorization: actor.authorization,
+        title: 'Completed generation',
+        prompt: 'Return JSON',
+        schema: z.object({ ok: z.boolean() }),
+        timeZone: 'UTC',
+        timeoutMs: 300,
+        signal: controller.signal,
+      });
+      expect(result.data).toEqual({ ok: true });
+      const history = await active!.history();
+      expect(remove).toHaveBeenCalledWith('abort', add.mock.calls[0]![1]);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      controller.abort(new Error('Late cancellation'));
+      expect(abort).not.toHaveBeenCalled();
+      expect(await active!.status()).toBe('idle');
+      expect(await active!.history()).toEqual(history);
+    } finally {
+      abort?.mockRestore();
+      background.mockRestore();
+      add.mockRestore();
+      remove.mockRestore();
+    }
+  });
   it('stops a live native response and restores its saved partial message', async () => {
     text = 'A controlled partial reply';
     hold = true;

@@ -16,6 +16,8 @@ export interface StructuredAI {
     readonly prompt: string;
     readonly schema: ZodType<T>;
     readonly timeZone: string;
+    readonly timeoutMs?: number;
+    readonly signal?: AbortSignal;
   }): Promise<{ data: T; sessionId: string }>;
 }
 
@@ -26,6 +28,7 @@ export function createNativeStructuredAI(
   return {
     async structured(input) {
       assertUnrestrictedNativeAIEntry(input.authorization);
+      input.signal?.throwIfAborted();
       const agents = container.resolve(agentsToken);
       if (!(await agents.models.services.defaults()).effectiveChat)
         throw new AIUnavailableError('No enabled native chat model');
@@ -40,6 +43,7 @@ export function createNativeStructuredAI(
           `[Time zone: ${input.timeZone}]\n${input.title}\n${input.prompt}`,
           input.schema,
           'hr.background',
+          { timeoutMs: input.timeoutMs ?? 120_000, signal: input.signal },
         );
       } catch (error) {
         if (
