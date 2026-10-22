@@ -13,6 +13,7 @@ import { databaseManagerToken } from '@nocobase/db';
 import { ServiceProvider } from '@nocobase/service-provider';
 
 import { createAIRunner } from './ai-runner.js';
+import { createNativeBillReview } from '../native-ai/vendor-bill.js';
 import { createNativeStructuredAI } from '../native-ai/structured.js';
 import { workbenchResource } from './workbench-resource.js';
 import { documentConflictResource } from './content-resources.js';
@@ -411,7 +412,7 @@ export default class HrProvider extends ServiceProvider<Application> {
       const authz = container.resolve(authorizationToken);
       return createAiEntryService({
         database: container.resolve(databaseManagerToken),
-        ai: createAIRunner(container),
+        ai: createNativeStructuredAI(container),
         timeZone: this.talentConfig().timeZone,
         holdersOf: (key) =>
           container.resolve(hrCoreServiceToken).holdersOf(key),
@@ -1407,10 +1408,8 @@ export default class HrProvider extends ServiceProvider<Application> {
             .getLogger('hr-audit')
             .info(event, 'HR audit'),
         automation: () => container.resolve(automationServiceToken),
-        ai: {
-          reply: (input) => createAIRunner(container).reply(input),
-          ...createNativeStructuredAI(container),
-        },
+        ai: createNativeStructuredAI(container),
+        reviewBill: createNativeBillReview(container),
       }),
     );
   }

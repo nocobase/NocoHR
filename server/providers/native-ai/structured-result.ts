@@ -14,6 +14,7 @@ export async function generateStructuredResult<T>(
   schema: z.ZodType<T>,
   scope: string,
   deadline?: { timeoutMs: number; signal?: AbortSignal },
+  tools: string[] = [],
 ) {
   assertUnrestrictedNativeAIEntry(actor.authorization);
   const started = performance.now();
@@ -25,7 +26,7 @@ export async function generateStructuredResult<T>(
   deadline?.signal?.throwIfAborted();
   const session = await online.background(actor, {
     scope: [scope],
-    tool: [],
+    tool: tools,
   });
   deadline?.signal?.throwIfAborted();
   await session.run(

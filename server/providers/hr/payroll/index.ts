@@ -4,7 +4,7 @@
  * `payrollServicesToken`.
  */
 import type { StructuredAI } from '../../native-ai/structured.js';
-import type { AIRunner } from '../ai-runner.js';
+import type { NativeBillReview } from '../../native-ai/vendor-bill.js';
 import type { AutomationService } from '../automation.js';
 import { createAnomalyCheck } from './anomalies.js';
 import { createPayrollAssistant } from './assistant.js';
@@ -22,7 +22,8 @@ import { createVendorBillService } from './vendor-bills.js';
 export function createPayrollServices(
   deps: PayrollDeps & {
     readonly automation: () => AutomationService;
-    readonly ai: StructuredAI & Pick<AIRunner, 'reply'>;
+    readonly ai: StructuredAI;
+    readonly reviewBill: NativeBillReview;
   },
 ) {
   const ctx = createPayrollContext(deps);
@@ -42,6 +43,7 @@ export function createPayrollServices(
     bills,
     automation: deps.automation,
     ai: deps.ai,
+    reviewBill: deps.reviewBill,
   });
   return {
     context: ctx,

@@ -6,6 +6,15 @@ import {
   licensedServicesToken,
   talentReviewServicesToken,
 } from '../../server/providers/hr/tokens.js';
+import { createNativeBillReview } from '../../server/providers/native-ai/vendor-bill.js';
+import {
+  payrollServicesToken,
+  aiEntryServiceToken,
+} from '../../server/providers/hr/tokens.js';
+import {
+  vendorBillResource,
+  payrollSettingsResource,
+} from '../../server/providers/hr/payroll/resources.js';
 import { createNativeStructuredAI } from '../../server/providers/native-ai/structured.js';
 import {
   personnelSettingsToken,
@@ -59,6 +68,9 @@ let text = 'Native fixture reply';
 let calls = 0;
 const requests: { tools?: unknown[]; messages?: unknown[] }[] = [];
 let tool: { name: string; args: string } | undefined;
+const toolQueue: { name: string; args: string }[] = [];
+let beforeModelReply: (() => Promise<void>) | undefined;
+let holdFinal = false;
 let hold = false;
 let heldStream: { opened(): void; closed(): void } | undefined;
 let fail = false;
@@ -80,7 +92,8 @@ const model = createServer(async (req, res) => {
     );
     return;
   }
-  const selectedTool = tool;
+  await beforeModelReply?.();
+  const selectedTool = tool ?? toolQueue.shift();
   tool = undefined;
   const message = { role: 'assistant', content: text };
   if (input.stream) {
@@ -95,7 +108,7 @@ const model = createServer(async (req, res) => {
         tool_calls: [
           {
             index: 0,
-            id: 'controlled-call',
+            id: 'controlled-call-' + calls,
             type: 'function',
             function: { name: selectedTool.name, arguments: selectedTool.args },
           },
@@ -105,7 +118,7 @@ const model = createServer(async (req, res) => {
     } else {
       chunk(message);
     }
-    if (hold) {
+    if (hold || (holdFinal && !selectedTool)) {
       res.once('close', () => heldStream?.closed());
       heldStream?.opened();
       return;
@@ -1682,6 +1695,454 @@ describe('native AI application composition', () => {
       remove.mockRestore();
     }
   });
+  it.each([
+    'valid',
+    'no-model',
+    'invalid',
+    'model-failure',
+    'restricted',
+    'revoked',
+    'audience',
+  ] as const)(
+    'routes through the production native classifier: %s',
+    async (outcome) => {
+      const container = app.application.container;
+      const entry = container.resolve(aiEntryServiceToken);
+      let ctx = { userId: actor.user.id, authz: actor.authorization };
+      if (outcome === 'restricted') {
+        ctx = {
+          ...ctx,
+          authz: container.resolve(authorizationToken).for({
+            ...actor.authorization.identity,
+            keyScope: {
+              keyId: 'restricted-route',
+              allows: () => true,
+              objects: () => [],
+              permissions: [],
+            },
+          }),
+        };
+      }
+      if (outcome === 'revoked' || outcome === 'audience') {
+        const user = await container
+          .resolve(userManagementServiceToken)
+          .create({
+            name: 'Controlled routing user',
+            username: 'route_' + outcome,
+            email: 'route_' + outcome + '@example.invalid',
+            password: randomBytes(24).toString('hex'),
+          });
+        const authz = container.resolve(authorizationToken);
+        await authz.permissionSets.create({
+          key: 'routing-' + outcome,
+          grants: [
+            aiAssistantResource
+              .reference()
+              .grant({ use: { employees: 'allRecords' } }),
+          ],
+        });
+        const assignment = await authz.permissionSets.assign({
+          subject: { type: 'user', id: user.id },
+          permissionSet: 'routing-' + outcome,
+        });
+        if (outcome === 'revoked')
+          await authz.permissionSets.revoke(assignment.id);
+        ctx = {
+          userId: user.id,
+          authz: (await actorContext(user.id)).authorization,
+        };
+      }
+      const services = container.resolve(agentsToken).models.services;
+      const modelService = (await services.list())[0]!;
+      text =
+        outcome === 'valid'
+          ? '{"key":"myRecord"}'
+          : outcome === 'audience'
+            ? '{"key":"hrData"}'
+            : 'myRecord';
+      fail = outcome === 'model-failure';
+      if (outcome === 'no-model')
+        await services.update(modelService.name, { enabled: false });
+      const before = calls;
+      try {
+        const pending = cost('native-route-' + outcome, () =>
+          entry.route(ctx, '我的住址需要核对'),
+        );
+        if (outcome === 'restricted' || outcome === 'revoked') {
+          await expect(pending).rejects.toMatchObject({ status: 403 });
+          expect(calls).toBe(before);
+        } else if (outcome === 'model-failure') {
+          await expect(pending).rejects.toMatchObject({
+            code: 'EXECUTION_FAILED',
+          });
+        } else {
+          expect(await pending).toMatchObject({
+            key: 'myRecord',
+            method: outcome === 'valid' ? 'model' : 'keywords',
+          });
+          expect(calls - before).toBe(outcome === 'no-model' ? 0 : 1);
+          expect(requests.at(-1)?.tools ?? []).toHaveLength(0);
+          if (outcome === 'audience')
+            expect(JSON.stringify(requests.at(-1)?.messages)).not.toContain(
+              'hrData',
+            );
+        }
+      } finally {
+        fail = false;
+        if (outcome === 'no-model')
+          await services.update(modelService.name, { enabled: true });
+      }
+    },
+  );
+  it.each([
+    'valid',
+    'no-model',
+    'invalid',
+    'model-failure',
+    'revoked',
+    'timeout-after-write',
+    'cancel-after-write',
+  ] as const)(
+    'uses the production native vendor-bill tool connection: %s',
+    async (outcome) => {
+      const container = app.application.container;
+      const authz = container.resolve(authorizationToken);
+      const user = await container.resolve(userManagementServiceToken).create({
+        name: 'Controlled bill owner',
+        username: 'bill_' + outcome.replaceAll('-', '_'),
+        email: 'bill_' + outcome + '@example.invalid',
+        password: randomBytes(24).toString('hex'),
+      });
+      const key = 'native-bill-' + outcome;
+      await app.connection.repository('employees').createOne({
+        values: {
+          id: key,
+          employeeNo: key,
+          name: 'Controlled bill owner',
+          userId: user.id,
+          departmentId: 'controlled-team',
+          status: 'active',
+          employmentType: 'fullTime',
+          syncLocked: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+      await authz.permissionSets.create({
+        key,
+        grants: [
+          vendorBillResource.reference().grant({
+            view: { laborVendorBills: 'allRecords' },
+            upload: {
+              laborVendorBills: 'allRecords',
+              employees: 'allRecords',
+              attendanceMonthlySummaries: 'allRecords',
+            },
+          }),
+          payrollSettingsResource
+            .reference()
+            .grant({ configure: { salaryStructures: 'allRecords' } }),
+        ],
+      });
+      const assignment = await authz.permissionSets.assign({
+        subject: { type: 'user', id: user.id },
+        permissionSet: key,
+      });
+      const root = { userId: actor.user.id, authz: actor.authorization };
+      await container
+        .resolve(automationServiceToken)
+        .update(root, 'vendorReconciler.billReview', {
+          enabled: true,
+          ownerUserId: user.id,
+        });
+      // Retained setting is only the opt-in; no old employee/model configuration is loaded.
+      const settingsRow = await app.connection
+        .repository('personnelSettings')
+        .findOne({ filter: { id: 'payroll.settings' } });
+      if (!settingsRow) throw new Error('Missing payroll settings');
+      let settings: unknown = settingsRow.value;
+      while (typeof settings === 'string') settings = JSON.parse(settings);
+      const value = settings as { vendorBill: { aiEmployee: string | null } };
+      await app.connection.repository('personnelSettings').updateOne({
+        filter: { id: 'payroll.settings' },
+        values: {
+          value: {
+            ...value,
+            vendorBill: {
+              ...value.vendorBill,
+              aiEmployee: 'retained-opt-in',
+            },
+          },
+        },
+      });
+      const stamp = { createdAt: new Date(), updatedAt: new Date() };
+      await app.connection.repository('laborVendorBills').createOne({
+        values: {
+          id: key,
+          vendorName: key,
+          month: '2026-10',
+          fileId: 'synthetic-file',
+          status: 'uploaded',
+          lines: [
+            {
+              row: 1,
+              employeeNo: 'controlled-person',
+              name: 'Controlled employee',
+              billedHours: 40,
+              amount: 987654,
+            },
+          ],
+          reconciliation: [
+            {
+              employeeId: 'controlled-person',
+              employeeNo: 'controlled-person',
+              name: 'Controlled employee',
+              billedHours: 40,
+              attendanceHours: 32,
+              diffHours: 8,
+              reason: 'diff',
+            },
+          ],
+          ...stamp,
+        },
+      });
+      const payroll = container.resolve(payrollServicesToken);
+      const write = vi.spyOn(payroll.bills, 'saveNotes');
+      const online = container.resolve(agentsToken).onlineAgent;
+      const original = online.background.bind(online);
+      let active: Awaited<ReturnType<typeof original>> | undefined;
+      const background = vi
+        .spyOn(online, 'background')
+        .mockImplementation(async (...args) => {
+          active = await original(...args);
+          if (outcome === 'timeout-after-write') {
+            const observe = active.try.bind(active);
+            vi.spyOn(active, 'try').mockImplementation((options) => {
+              expect(options?.wait).toBeGreaterThan(110_000);
+              return observe({ wait: 500 });
+            });
+          }
+          return active;
+        });
+      const services = container.resolve(agentsToken).models.services;
+      const modelService = (await services.list())[0]!;
+      if (outcome === 'no-model')
+        await services.update(modelService.name, { enabled: false });
+      fail = outcome === 'model-failure';
+      text =
+        outcome === 'invalid'
+          ? 'Invalid bill result'
+          : '{"summary":"Hours reviewed"}';
+      if (
+        outcome === 'valid' ||
+        outcome === 'revoked' ||
+        outcome === 'timeout-after-write' ||
+        outcome === 'cancel-after-write'
+      ) {
+        toolQueue.push(
+          {
+            name: 'getVendorBillReconciliation',
+            args: JSON.stringify({ billId: key }),
+          },
+          {
+            name: 'saveVendorBillNotes',
+            args: JSON.stringify({
+              billId: key,
+              notes:
+                'Controlled difference of 8 hours; ask the vendor to verify.',
+            }),
+          },
+        );
+      }
+      if (outcome === 'revoked')
+        beforeModelReply = async () => {
+          if (toolQueue[0]?.name === 'saveVendorBillNotes') {
+            await authz.permissionSets.revoke(assignment.id);
+            beforeModelReply = undefined;
+          }
+        };
+      const closed = Promise.withResolvers<void>();
+      const opened = Promise.withResolvers<void>();
+      if (
+        outcome === 'timeout-after-write' ||
+        outcome === 'cancel-after-write'
+      ) {
+        holdFinal = true;
+        heldStream = { opened: opened.resolve, closed: closed.resolve };
+      }
+      try {
+        const pending = cost('native-bill-' + outcome, () =>
+          payroll.assistant.review(key, 'controlled-upload'),
+        );
+        if (outcome === 'cancel-after-write') {
+          await opened.promise;
+          await active!.abort();
+        }
+        const result = await pending;
+        expect(result.status).toBe(
+          outcome === 'revoked' ? 'failed' : 'succeeded',
+        );
+        const row = await app.connection
+          .repository('laborVendorBills')
+          .findOne({ filter: { id: key } });
+        if (outcome === 'revoked') {
+          expect(write).not.toHaveBeenCalled();
+          expect(row?.aiNotes).toBeNull();
+        } else {
+          expect(write).toHaveBeenCalledTimes(1);
+          expect(row?.status).toBe('reconciled');
+          expect(row?.aiNotes).not.toContain('987654');
+          if (
+            outcome === 'valid' ||
+            outcome === 'timeout-after-write' ||
+            outcome === 'cancel-after-write'
+          )
+            expect(row?.aiNotes).toContain('Controlled difference');
+          expect(row?.confirmedAt).toBeNull();
+          expect(row?.lines).toEqual([
+            {
+              row: 1,
+              employeeNo: 'controlled-person',
+              name: 'Controlled employee',
+              billedHours: 40,
+              amount: 987654,
+            },
+          ]);
+        }
+        if (active) {
+          expect(await active.status()).toBe('idle');
+          const history = await active.history();
+          expect(JSON.stringify(history)).not.toContain('987654');
+          if (outcome === 'valid') {
+            expect(JSON.stringify(history)).toContain(
+              'tool-getVendorBillReconciliation',
+            );
+            expect(JSON.stringify(history)).toContain(
+              'tool-saveVendorBillNotes',
+            );
+            const before = calls;
+            const reopened = await online.background(
+              await actorContext(user.id),
+              { sessionId: active.sessionId },
+            );
+            expect(await reopened.get()).toEqual({ summary: 'Hours reviewed' });
+            expect(calls).toBe(before);
+            await expect(
+              online.background(actor, { sessionId: active.sessionId }),
+            ).rejects.toThrow();
+            const duplicate = await cost('native-bill-duplicate', () =>
+              payroll.assistant.review(key, 'controlled-upload'),
+            );
+            expect(duplicate.status).toBe('duplicate');
+            expect(calls).toBe(before);
+            expect(write).toHaveBeenCalledTimes(1);
+          }
+          if (
+            outcome === 'timeout-after-write' ||
+            outcome === 'cancel-after-write'
+          )
+            await closed.promise;
+        }
+      } finally {
+        fail = false;
+        holdFinal = false;
+        heldStream = undefined;
+        beforeModelReply = undefined;
+        toolQueue.length = 0;
+        await active?.abort();
+        background.mockRestore();
+        write.mockRestore();
+        if (outcome === 'no-model')
+          await services.update(modelService.name, { enabled: true });
+        await app.connection
+          .repository('personnelSettings')
+          .updateOne({ filter: { id: 'payroll.settings' }, values: { value } });
+      }
+    },
+  );
+  it('rejects scoped vendor-bill entry before model probing or persistence', async () => {
+    const authz = app.application.container.resolve(authorizationToken);
+    const authorization = authz.for({
+      ...actor.authorization.identity,
+      keyScope: {
+        keyId: 'restricted-bill',
+        allows: () => true,
+        objects: () => [],
+        permissions: [],
+      },
+    });
+    await expect(
+      cost('native-bill-restricted-entry', () =>
+        createNativeBillReview(app.application.container)({
+          userId: actor.user.id,
+          authorization,
+          billId: 'not-read',
+          timeZone: 'UTC',
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+  it.each(['read', 'write', 'wrong-bill'] as const)(
+    'guards raw native bill tools before business access: %s',
+    async (path) => {
+      const container = app.application.container;
+      const payroll = container.resolve(payrollServicesToken);
+      const read = vi.spyOn(payroll.bills, 'reconciliationFor');
+      const write = vi.spyOn(payroll.bills, 'saveNotes');
+      const authz = container.resolve(authorizationToken);
+      const entry =
+        path === 'wrong-bill'
+          ? actor
+          : {
+              ...actor,
+              authorization: authz.for({
+                ...actor.authorization.identity,
+                keyScope: {
+                  keyId: 'raw-bill-scope',
+                  allows: () => true,
+                  objects: () => [],
+                  permissions: [],
+                },
+              }),
+            };
+      const online = container.resolve(agentsToken).onlineAgent;
+      const session = await online.background(
+        { ...entry, business: { billId: 'bound-bill' } },
+        { scope: ['hr.vendorBills'] },
+      );
+      tool = {
+        name:
+          path === 'read'
+            ? 'getVendorBillReconciliation'
+            : 'saveVendorBillNotes',
+        args: JSON.stringify({
+          billId: path === 'wrong-bill' ? 'other-bill' : 'bound-bill',
+          notes: 'Must not save',
+        }),
+      };
+      text = '{"summary":"Controlled refusal"}';
+      try {
+        await cost('native-bill-raw-' + path, async () => {
+          await session.run([{ role: 'user', content: 'Use the bill tool' }], {
+            type: 'object',
+            properties: { summary: { type: 'string' } },
+            required: ['summary'],
+            additionalProperties: false,
+          });
+          await session.get();
+        });
+        expect(read).not.toHaveBeenCalled();
+        expect(write).not.toHaveBeenCalled();
+        expect(JSON.stringify(await session.history())).toContain(
+          'output-error',
+        );
+      } finally {
+        await session.abort();
+        read.mockRestore();
+        write.mockRestore();
+      }
+    },
+  );
   it('stops a live native response and restores its saved partial message', async () => {
     text = 'A controlled partial reply';
     hold = true;
