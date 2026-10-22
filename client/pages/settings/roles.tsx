@@ -9,9 +9,10 @@ import { Link, Outlet, useLocation, useSearchParams } from 'react-router';
 import { ShieldCheckIcon, PlusIcon } from 'lucide-react';
 import { PageContainer } from '#components/page-container';
 import { PageHeader } from '#components/page-header';
+import { RoleList } from '#components/role-list';
+import { useTableUrlState } from '#hooks/use-table-url-state';
 import { Input } from '#components/ui/input';
 import { Button } from '#components/ui/button';
-import { Badge } from '#components/ui/badge';
 import {
   Empty,
   EmptyTitle,
@@ -49,6 +50,24 @@ export default function RolesPage(): ReactElement {
         i18n.language,
       ),
     );
+  const tableState = useTableUrlState({
+    sortColumns: ['title', 'key'],
+    rowCount:
+      request.data && !request.loading && !request.error
+        ? rows.length
+        : undefined,
+  });
+  const clearSearch = () => {
+    setParams(
+      (old) => {
+        const next = new URLSearchParams(old);
+        next.delete('q');
+        next.delete('page');
+        return next;
+      },
+      { replace: true },
+    );
+  };
   const create = canCreate ? (
     <Button
       nativeButton={false}
@@ -73,18 +92,20 @@ export default function RolesPage(): ReactElement {
             placeholder={t('settings.roleSearch')}
             aria-label={t('settings.roleSearch')}
             onChange={(event) => {
-              setParams(event.target.value ? { q: event.target.value } : {}, {
-                replace: true,
-              });
+              setParams(
+                (old) => {
+                  const next = new URLSearchParams(old);
+                  next.delete('page');
+                  if (event.target.value) next.set('q', event.target.value);
+                  else next.delete('q');
+                  return next;
+                },
+                { replace: true },
+              );
             }}
           />
           {search && (
-            <Button
-              variant='ghost'
-              onClick={() => {
-                setParams({});
-              }}
-            >
+            <Button variant='ghost' onClick={clearSearch}>
               {t('settings.clear')}
             </Button>
           )}
@@ -95,39 +116,26 @@ export default function RolesPage(): ReactElement {
         ) : (
           !request.error &&
           (rows.length ? (
-            <div className='divide-y overflow-hidden rounded-xl border bg-card'>
-              {rows.map((role) => (
-                <Link
-                  key={role.key}
-                  to={{
-                    pathname: `edit/${encodeURIComponent(role.key)}`,
-                    search: location.search,
-                  }}
-                  className='flex items-center justify-between gap-4 p-4 transition-colors hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring'
-                >
-                  <div className='flex min-w-0 items-center gap-3'>
-                    <div className='rounded-lg bg-primary/10 p-2 text-primary'>
-                      <ShieldCheckIcon className='size-4' />
-                    </div>
-                    <div className='min-w-0'>
-                      <p className='font-medium'>
-                        {text(role.title ?? role.key)}
-                      </p>
-                      <p className='text-xs text-muted-foreground'>
-                        {role.key}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant='secondary'>
-                    {t(
-                      role.protection
-                        ? 'settings.protected'
-                        : 'settings.custom',
-                    )}
-                  </Badge>
-                </Link>
-              ))}
-            </div>
+            <RoleList
+              tableState={tableState}
+              ariaLabel={t('settings.roles')}
+              roles={rows.map((role) => ({
+                key: role.key,
+                title: text(role.title ?? role.key),
+                to: {
+                  pathname: `edit/${encodeURIComponent(role.key)}`,
+                  search: location.search,
+                },
+                protected: Boolean(role.protection),
+              }))}
+              labels={{
+                name: t('settings.roleName'),
+                key: t('settings.key'),
+                type: t('settings.roleType'),
+                protected: t('settings.protected'),
+                custom: t('settings.custom'),
+              }}
+            />
           ) : (
             <Empty className='min-h-48 border border-dashed'>
               <EmptyMedia variant='icon'>
@@ -137,16 +145,17 @@ export default function RolesPage(): ReactElement {
                 {t(search ? 'settings.noResults' : 'settings.noRoles')}
               </EmptyTitle>
               <EmptyDescription>
-                {t(search ? 'settings.clearHint' : 'settings.rolesDescription')}
+                {t(
+                  search
+                    ? 'settings.clearHint'
+                    : canCreate
+                      ? 'settings.rolesDescription'
+                      : 'settings.rolesReadOnlyEmpty',
+                )}
               </EmptyDescription>
               <EmptyContent>
                 {search ? (
-                  <Button
-                    variant='outline'
-                    onClick={() => {
-                      setParams({});
-                    }}
-                  >
+                  <Button variant='outline' onClick={clearSearch}>
                     {t('settings.clear')}
                   </Button>
                 ) : (

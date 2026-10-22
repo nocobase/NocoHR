@@ -1379,6 +1379,13 @@ const zhCN: AppResource = {
     subject: '授权对象',
 
     ...templateSettings,
+    allRoles: '全部角色',
+    roleFilterIncomplete: '请同时指定角色范围与角色，或清除筛选条件。',
+    roleType: '类型',
+    usersReadOnlyEmpty:
+      '请联系管理员添加用户，或授予创建用户和分配角色所需的权限。',
+    rolesReadOnlyEmpty: '请联系管理员创建角色，或授予你创建角色的权限。',
+    invalidRequest: '部分内容无效，请检查填写内容或筛选条件后重试。',
     apiKeys: 'API 密钥',
     title: '设置',
     emptyTitle: '暂无可用设置',

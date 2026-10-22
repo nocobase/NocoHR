@@ -1500,6 +1500,16 @@ const enUS = {
     subject: 'Subject',
 
     ...templateSettings,
+    allRoles: 'All roles',
+    roleFilterIncomplete:
+      'Choose both a role scope and a role, or clear the filters.',
+    roleType: 'Type',
+    usersReadOnlyEmpty:
+      'Contact an administrator to add users or grant the permissions needed to create users and assign roles.',
+    rolesReadOnlyEmpty:
+      'Contact an administrator to create a role or grant you permission to create roles.',
+    invalidRequest:
+      'Some values are invalid. Check your input or filters and try again.',
     apiKeys: 'API keys',
     title: 'Settings',
     emptyTitle: 'No settings available',
