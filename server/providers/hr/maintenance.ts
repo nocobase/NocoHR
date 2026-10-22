@@ -2,6 +2,7 @@
  * The HR schedules' work in one place, so the scheduler targets and the
  * "run maintenance now" endpoint do the same thing.
  */
+import { authorizationToken } from '@nocobase/app-plugin-authorization/server';
 import type { ServiceContainer } from '@nocobase/service-provider';
 
 import { runAttendanceTask } from './attendance-tasks.js';
@@ -316,23 +317,22 @@ async function aiBrief(
   timeZone: string,
 ): Promise<string | undefined> {
   try {
-    const { assistantConversationsToken } =
-      await import('../assistant/tokens.js');
-    if (container.has(assistantConversationsToken)) {
-      const { createAIRunner } = await import('./ai-runner.js');
-      const { z } = await import('zod');
-      const { data } = await createAIRunner(container).structured({
-        employee: 'certificationSteward',
+    const { createNativeStructuredAI } =
+      await import('../native-ai/structured.js');
+    const { z } = await import('zod');
+    const { data } = await createNativeStructuredAI(container).structured({
+      employee: 'certificationSteward',
+      userId,
+      authorization: await scopeForUser(
+        container.resolve(authorizationToken),
         userId,
-        title: '每周持证简报',
-        timeZone,
-        prompt: `请根据以下本周持证数据，为我写一份不超过 200 字的持证简报，只使用给出的数据，按到期日排序列名单，不要估算：\n${JSON.stringify(facts)}`,
-        schema: z.object({ brief: z.string() }),
-        timeoutMs: 60_000,
-      });
-      return data.brief.trim().slice(0, 200) || undefined;
-    }
-    return undefined;
+      ),
+      title: '每周持证简报',
+      timeZone,
+      prompt: `请根据以下本周持证数据，为我写一份不超过 200 字的持证简报，只使用给出的数据，按到期日排序列名单，不要估算：\n${JSON.stringify(facts)}`,
+      schema: z.object({ brief: z.string() }),
+    });
+    return data.brief.trim().slice(0, 200) || undefined;
   } catch {
     return undefined;
   }

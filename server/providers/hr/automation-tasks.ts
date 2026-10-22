@@ -1,6 +1,3 @@
-import { OnlineAgentResultError } from '@nocobase/app-plugin-agents/server/online-agent';
-import { agentsToken } from '@nocobase/app-plugin-agents/server/tokens';
-import { generateLearningPlan } from '../native-ai/learning-plan.js';
 /**
  * What each AI employee does without being asked (V1, "总纲 · AI 员工约定").
  * Every task runs through the automation service, so it respects the task's
@@ -18,14 +15,15 @@ import { generateLearningPlan } from '../native-ai/learning-plan.js';
  * description names are still proposed, each with the clause that names
  * them, and nothing new is invented.
  */
+import { assertUnrestrictedNativeAIEntry } from '../native-ai/access.js';
+import type { StructuredAI } from '../native-ai/structured.js';
+import { OnlineAgentResultError } from '@nocobase/app-plugin-agents/server/online-agent';
+import { agentsToken } from '@nocobase/app-plugin-agents/server/tokens';
+import { generateLearningPlan } from '../native-ai/learning-plan.js';
 import type { ServiceContainer } from '@nocobase/service-provider';
 import { z } from 'zod';
 
-import {
-  AIUnavailableError,
-  AIShapeError,
-  type AIRunner,
-} from './ai-runner.js';
+import { AIUnavailableError, AIShapeError } from './ai-runner.js';
 import { guardedWording } from './ai-text-guard.js';
 import {
   clauseListing,
@@ -159,7 +157,7 @@ export interface AutomationTasks {
 export interface AutomationTasksDeps {
   readonly container: ServiceContainer;
   readonly automation: AutomationService;
-  readonly ai: AIRunner;
+  readonly ai: StructuredAI;
   readonly platform: Platform;
   readonly organization: () => OrganizationService;
   /** The application's default language. */
@@ -201,6 +199,7 @@ export function createAutomationTasks(
     const { data, sessionId } = await ai.structured({
       employee,
       userId: run.owner.userId,
+      authorization: run.owner.authz,
       title,
       prompt,
       schema,
@@ -1822,6 +1821,7 @@ export function createAutomationTasks(
     },
 
     async retryRun(ctx, runId) {
+      assertUnrestrictedNativeAIEntry(ctx.authz);
       const { task, triggerRef } = await automation.retryTarget(ctx, runId);
       const ref = (name: string): string => {
         const value = triggerRef[name];

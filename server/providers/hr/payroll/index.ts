@@ -3,6 +3,7 @@
  * (server/providers/hr/index.ts, V2-06 block) and resolved through
  * `payrollServicesToken`.
  */
+import type { StructuredAI } from '../../native-ai/structured.js';
 import type { AIRunner } from '../ai-runner.js';
 import type { AutomationService } from '../automation.js';
 import { createAnomalyCheck } from './anomalies.js';
@@ -21,7 +22,7 @@ import { createVendorBillService } from './vendor-bills.js';
 export function createPayrollServices(
   deps: PayrollDeps & {
     readonly automation: () => AutomationService;
-    readonly ai: AIRunner;
+    readonly ai: StructuredAI & Pick<AIRunner, 'reply'>;
   },
 ) {
   const ctx = createPayrollContext(deps);

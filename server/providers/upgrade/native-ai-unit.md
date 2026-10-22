@@ -1,6 +1,6 @@
 # Native AI unit
 
-New model settings, employee chat and learning-plan generation now use the official Agents service. The selected callers have one native execution path. Existing histories and business data are retained. The complete template upgrade remains unaccepted; do not merge or deploy it.
+New model settings, employee chat and learning-plan generation now use the official Agents service. [The ordinary generation follow-up](native-background-unit.md) records settings proposals and the remaining structured callers migrated afterward. The selected callers have one native execution path. Existing histories and business data are retained. The complete template upgrade remains unaccepted; do not merge or deploy it.
 
 ## Verified behavior
 
@@ -55,7 +55,7 @@ The compiled browser's controlled scenario uses six model requests; one capture 
 
 - Real external provider credentials, model quality, HR accounts and data, actual approved profile-change persistence through the browser, complete process termination recovery, production Jobs/Redis, PostgreSQL and multi-instance execution.
 - Installed-database migration/checksum prerequisites and backup/restore rehearsal; source-only historical files do not replace the compiled archive or real deployment inventory.
-- Remaining assistant consumers: knowledge retrieval and generation, Feishu/IM routing and cards, personnel-settings drafting, framework advisor, practice/recruiting/interview/analysis and other background automations, weekly briefs and legacy history/configuration APIs. They retain their disabled assistant source gate; this unit does not expand or turn it on. Their old adapters are not the execution path for the migrated employee/learning callers.
+- Remaining assistant consumers after the ordinary-generation follow-up: native knowledge retrieval/embeddings, Feishu/IM routing/cards/tool replies, vendor-bill tool replies and legacy history/configuration APIs. They retain their disabled assistant source gate. Settings proposals and ordinary framework, practice, recruiting/interview/analysis, performance/talent-review and weekly-brief generation now use native services; see the linked inventory. The older counts below describe the chat/learning unit at its delivery head.
 - Workflow business/history mapping and runtime cutover remain separate. The 138 tracked migration/seed entries and existing data are retained. No custom table, migration, grant policy, automatic legacy conversion, runner or deployment mechanism was introduced.
 - Full `.54 → .76` source reconciliation is unfinished. The `.74 → .76` inventory contains 52 template paths; this unit adopts the required dependency/registration changes and native AI surfaces, not all unrelated template changes. Keep `defaultTemplateVersion` at `.54`.
 

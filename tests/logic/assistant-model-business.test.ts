@@ -17,16 +17,9 @@ import { createImChannel } from '../../server/providers/hr/im-channel.js';
 import { createAiEntryService } from '../../server/providers/hr/ai-entry-service.js';
 import { createTrainingAutomation } from '../../server/providers/hr/training-automation.js';
 import { createPlanService } from '../../server/providers/hr/plan-service.js';
-import { runWeeklyBriefs } from '../../server/providers/hr/maintenance.js';
-import {
-  platformToken,
-  insightServiceToken,
-  licensedServicesToken,
-} from '../../server/providers/hr/tokens.js';
 import { planServiceToken } from '../../server/providers/hr/tokens.js';
 import type { HrCoreService } from '../../server/providers/hr/core-service.js';
 import type { AutomationRunContext } from '../../server/providers/hr/automation.js';
-import type { InsightService } from '../../server/providers/hr/insight-service.js';
 import type { PathService } from '../../server/providers/hr/path-service.js';
 import zh from '../../server/locales/zh-CN.js';
 
@@ -541,81 +534,6 @@ it.each(['unavailable', 'invalid', 'network'] as const)(
     }
     expect(f.requests).toHaveLength(0);
     expect(t.requests).toHaveLength(kind === 'unavailable' ? 0 : 1);
-  },
-);
-
-it.each(['success', 'empty', 'invalid', 'network', 'unavailable'] as const)(
-  'preserves weekly brief facts, length cap and existing exception fallback: %s',
-  async (kind) => {
-    const f = await fixture();
-    await f.db.repository('departments').createOne({
-      values: {
-        id: 'team',
-        title: 'Synthetic Team',
-        managerId: 'owner',
-        ...stamp,
-      },
-    });
-    const facts = {
-      newThisWeek: ['Synthetic member'],
-      expiringSoon: [],
-      expired: [],
-      missing: [],
-    };
-    const weeklyFacts = vi.fn(async (ctx: { userId: string }) => {
-      expect(ctx.userId).toBe('owner');
-      return facts;
-    });
-    f.container.singleton(platformToken, () => f.platform);
-    f.container.singleton(
-      insightServiceToken,
-      () => ({ weeklyFacts }) as unknown as InsightService,
-    );
-    f.container.singleton(
-      licensedServicesToken,
-      () => ({ lostThisWeek: async () => [] }) as never,
-    );
-    if (kind === 'success')
-      f.answers.push({ structured: { brief: 'A'.repeat(240) } });
-    if (kind === 'empty') f.answers.push({ structured: { brief: '  ' } });
-    if (kind === 'invalid')
-      f.answers.push(
-        { structured: { wrong: true } },
-        { structured: { wrong: true } },
-      );
-    if (kind === 'network') f.answers.push({ status: 503 });
-    if (kind === 'unavailable')
-      await f.db.repository('assistantEmployees').updateMany({
-        filter: { id: 'certificationSteward' },
-        values: {
-          profile: { username: 'certificationSteward', enabled: false },
-        },
-      });
-    const result = await f.cost('weekly-brief-' + kind, () =>
-      runWeeklyBriefs(f.container, 'UTC'),
-    );
-    expect(result).toMatchObject({
-      sent: 1,
-      heads: 1,
-      fallback: kind !== 'success',
-    });
-    expect(weeklyFacts).toHaveBeenCalledOnce();
-    const notification = f.notifications[0] as {
-      userIds: string[];
-      params: { brief: string };
-    };
-    expect(notification.userIds).toEqual(['owner']);
-    expect(notification.params.brief.length).toBeLessThanOrEqual(200);
-    expect(notification.params.brief).toBe(
-      kind === 'success'
-        ? 'A'.repeat(200)
-        : '本周新增持证 1 人：Synthetic member',
-    );
-    if (f.requests.length)
-      expect(JSON.stringify(f.requests[0]!.messages)).toContain(
-        'Synthetic member',
-      );
-    expect(f.state.invokes).toBe(0);
   },
 );
 

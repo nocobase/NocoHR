@@ -13,6 +13,7 @@ import { databaseManagerToken } from '@nocobase/db';
 import { ServiceProvider } from '@nocobase/service-provider';
 
 import { createAIRunner } from './ai-runner.js';
+import { createNativeStructuredAI } from '../native-ai/structured.js';
 import { workbenchResource } from './workbench-resource.js';
 import { documentConflictResource } from './content-resources.js';
 import { createWorkItemStore, workItemText } from './work-item-store.js';
@@ -992,11 +993,12 @@ export default class HrProvider extends ServiceProvider<Application> {
             : null;
         },
         structured: async (run, title, prompt, schema) => {
-          const { data, sessionId } = await createAIRunner(
+          const { data, sessionId } = await createNativeStructuredAI(
             container,
           ).structured({
             employee: 'recruitingAssistant',
             userId: run.owner.userId,
+            authorization: run.owner.authz,
             title,
             prompt,
             schema,
@@ -1230,7 +1232,7 @@ export default class HrProvider extends ServiceProvider<Application> {
         demoBatch: () => container.resolve(demoBatchServiceToken),
         industryPacks: () => container.resolve(industryPackServiceToken),
         automation: () => container.resolve(automationServiceToken),
-        ai: createAIRunner(container),
+        ai: createNativeStructuredAI(container),
         titleText: (title) => {
           if (title && typeof title === 'object' && 'key' in title) {
             const descriptor = title as { key: string; ns?: string };
@@ -1271,7 +1273,7 @@ export default class HrProvider extends ServiceProvider<Application> {
     container.singleton(talentReviewServicesToken, () =>
       createTalentReviewServices({
         platform: container.resolve(platformToken),
-        ai: createAIRunner(container),
+        ai: createNativeStructuredAI(container),
         automation: () => container.resolve(automationServiceToken),
         plans: () => container.resolve(planServiceToken),
         certifications: () => container.resolve(certificationServiceToken),
@@ -1296,7 +1298,7 @@ export default class HrProvider extends ServiceProvider<Application> {
     container.singleton(performanceServicesToken, () =>
       createPerformanceServices({
         platform: container.resolve(platformToken),
-        ai: createAIRunner(container),
+        ai: createNativeStructuredAI(container),
         automation: () => container.resolve(automationServiceToken),
         plans: () => container.resolve(planServiceToken),
         customFields: () => container.resolve(customFieldServiceToken),
@@ -1323,7 +1325,7 @@ export default class HrProvider extends ServiceProvider<Application> {
       createRecruitingServices({
         container,
         platform: container.resolve(platformToken),
-        ai: createAIRunner(container),
+        ai: createNativeStructuredAI(container),
         background: (label, run) => this.inBackground(label, run),
         production: process.env.NODE_ENV === 'production',
         // Candidate emails need an absolute link: config.app.publicOrigin (APP_PUBLIC_ORIGIN) and the base path.
@@ -1405,7 +1407,10 @@ export default class HrProvider extends ServiceProvider<Application> {
             .getLogger('hr-audit')
             .info(event, 'HR audit'),
         automation: () => container.resolve(automationServiceToken),
-        ai: createAIRunner(container),
+        ai: {
+          reply: (input) => createAIRunner(container).reply(input),
+          ...createNativeStructuredAI(container),
+        },
       }),
     );
   }
@@ -2187,7 +2192,7 @@ export default class HrProvider extends ServiceProvider<Application> {
       return createProfileServices({
         container,
         platform: container.resolve(platformToken),
-        ai: createAIRunner(container),
+        ai: createNativeStructuredAI(container),
         drive: () => container.resolve(driveManagerToken),
         users: () => container.resolve(userAdministrationServiceToken),
         customFields: () => container.resolve(customFieldServiceToken),
@@ -2230,7 +2235,7 @@ export default class HrProvider extends ServiceProvider<Application> {
       createAutomationTasks({
         container,
         automation: container.resolve(automationServiceToken),
-        ai: createAIRunner(container),
+        ai: createNativeStructuredAI(container),
         platform: container.resolve(platformToken),
         organization: () => container.resolve(organizationServiceToken),
         locale: () => container.resolve(i18nToken).getDefaultLocale(),
@@ -2269,7 +2274,7 @@ export default class HrProvider extends ServiceProvider<Application> {
     container.singleton(practiceServiceToken, () =>
       createPracticeService({
         platform: container.resolve(platformToken),
-        ai: createAIRunner(container),
+        ai: createNativeStructuredAI(container),
         onPracticePassed: () => async (employeeId) => {
           await container.resolve(pathServiceToken).syncEmployee(employeeId);
           // V3-11: the practice may finish a training recommendation.

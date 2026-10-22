@@ -1,4 +1,16 @@
 // @vitest-environment node
+import { runWeeklyBriefs } from '../../server/providers/hr/maintenance.js';
+import {
+  platformToken,
+  insightServiceToken,
+  licensedServicesToken,
+  talentReviewServicesToken,
+} from '../../server/providers/hr/tokens.js';
+import { createNativeStructuredAI } from '../../server/providers/native-ai/structured.js';
+import {
+  personnelSettingsToken,
+  settingsDraftServiceToken,
+} from '../../server/providers/hr/tokens.js';
 import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { registerHooks } from 'node:module';
@@ -7,7 +19,10 @@ import { createTestApp, type TestApp } from '@nocobase/app-testing/server';
 import { agentsToken } from '@nocobase/app-plugin-agents/server/tokens';
 import { userManagementServiceToken } from '@nocobase/app-plugin-users/server/tokens';
 import { learningCoachResource } from '../../server/providers/hr/training-resources.js';
-import { aiAssistantResource } from '../../server/providers/hr/authz-resources.js';
+import {
+  frameworkAdvisorResource,
+  aiAssistantResource,
+} from '../../server/providers/hr/authz-resources.js';
 import { authorizationToken } from '@nocobase/app-plugin-authorization/server';
 import {
   automationServiceToken,
@@ -42,7 +57,7 @@ const loader = registerHooks({
 let app: TestApp;
 let text = 'Native fixture reply';
 let calls = 0;
-const requests: { tools?: unknown[] }[] = [];
+const requests: { tools?: unknown[]; messages?: unknown[] }[] = [];
 let tool: { name: string; args: string } | undefined;
 let hold = false;
 let fail = false;
@@ -979,6 +994,474 @@ describe('native AI application composition', () => {
     expect(payload).not.toContain('synthetic-key');
     expect(payload).toContain('apiKeySet');
   });
+
+  it.each(['valid', 'no-model', 'invalid', 'model-failure'] as const)(
+    'uses the production ordinary task connection with native output: %s',
+    async (outcome) => {
+      const container = app.application.container;
+      const ctx = { userId: actor.user.id, authz: actor.authorization };
+      await container
+        .resolve(automationServiceToken)
+        .update(ctx, 'frameworkAdvisor.dictionaryReview', {
+          enabled: true,
+          ownerUserId: actor.user.id,
+        });
+      // An ungraded position guarantees a review candidate, independently of demo content.
+      const stamp = { createdAt: new Date(), updatedAt: new Date() };
+      const suffix = 'native-dictionary-' + outcome;
+      await app.connection.repository('jobFamilies').createOne({
+        values: {
+          id: suffix,
+          code: suffix,
+          title: 'Controlled review family',
+          active: true,
+          sortOrder: 0,
+          ...stamp,
+        },
+      });
+      await app.connection.repository('positions').createOne({
+        values: {
+          id: suffix,
+          code: suffix,
+          title: 'Controlled review position',
+          jobFamilyId: suffix,
+          active: true,
+          sortOrder: 0,
+          isKey: false,
+          ...stamp,
+        },
+      });
+      const position = await app.connection
+        .repository('positions')
+        .findOne({ filter: { id: suffix } });
+      const services = container.resolve(agentsToken).models.services;
+      const service = (await services.list())[0]!;
+      text =
+        outcome === 'valid'
+          ? JSON.stringify({
+              suggestions: [
+                {
+                  kind: 'position',
+                  competencies: ['Controlled review position'],
+                  suggestion: 'Ask its owner to review the grade',
+                  reason: 'The grade is empty',
+                },
+              ],
+            })
+          : 'Invalid ordinary background output';
+      if (outcome === 'no-model')
+        await services.update(service.name, { enabled: false });
+      fail = outcome === 'model-failure';
+      const before = calls;
+      const native = container.resolve(agentsToken).onlineAgent;
+      const original = native.background.bind(native);
+      let sessionId: string | undefined;
+      const background = vi
+        .spyOn(native, 'background')
+        .mockImplementation(async (...args) => {
+          const session = await original(...args);
+          sessionId = session.sessionId;
+          return session;
+        });
+      try {
+        const result = await cost('ordinary-production-' + outcome, () =>
+          container
+            .resolve(automationTasksToken)
+            .runScheduled('frameworkAdvisor.dictionaryReview', 'manual'),
+        );
+        expect(calls - before).toBe(outcome === 'no-model' ? 0 : 1);
+        expect(result.status).toBe(
+          outcome === 'model-failure' ? 'failed' : 'succeeded',
+        );
+        const run = await app.connection
+          .repository('aiTaskRuns')
+          .findOne({ filter: { id: result.runId } });
+        expect(run?.fallback).toBe(
+          outcome === 'no-model' || outcome === 'invalid',
+        );
+        expect(run?.conversationSessionId).toBe(
+          outcome === 'valid' ? sessionId : null,
+        );
+        if (outcome === 'valid') {
+          expect(JSON.stringify(run?.output)).toContain('Ask its owner');
+          expect(requests.at(-1)?.tools ?? []).toHaveLength(0);
+        }
+        if (sessionId) {
+          const saved = await container
+            .resolve(agentsToken)
+            .conversations.get(actor.user.id, sessionId);
+          expect(saved.execution?.outcome).toBe(
+            outcome === 'valid' ? 'completed' : 'failed',
+          );
+        }
+        expect(
+          await app.connection
+            .repository('positions')
+            .findOne({ filter: { id: suffix } }),
+        ).toEqual(position);
+      } finally {
+        fail = false;
+        background.mockRestore();
+        if (outcome === 'no-model')
+          await services.update(service.name, { enabled: true });
+      }
+    },
+  );
+  it('refuses an ordinary production task after its owner loses the business grant', async () => {
+    const container = app.application.container;
+    const authz = container.resolve(authorizationToken);
+    const user = await container.resolve(userManagementServiceToken).create({
+      name: 'Controlled task owner',
+      username: 'ordinary_owner',
+      email: 'ordinary_owner@example.invalid',
+      password: randomBytes(24).toString('hex'),
+    });
+    await app.connection.repository('employees').createOne({
+      values: {
+        id: 'ordinary-owner',
+        employeeNo: 'ordinary-owner',
+        name: 'Controlled task owner',
+        userId: user.id,
+        departmentId: 'controlled-team',
+        status: 'active',
+        employmentType: 'fullTime',
+        syncLocked: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+    await authz.permissionSets.create({
+      key: 'ordinary-owner',
+      grants: [
+        frameworkAdvisorResource.reference().grant({
+          use: { positions: 'allRecords', competencies: 'allRecords' },
+          configure: {
+            aiAutomationSettings: 'allRecords',
+            aiTaskRuns: 'allRecords',
+            aiTaskRunItems: 'allRecords',
+          },
+        }),
+      ],
+    });
+    const assignment = await authz.permissionSets.assign({
+      subject: { type: 'user', id: user.id },
+      permissionSet: 'ordinary-owner',
+    });
+    const automation = container.resolve(automationServiceToken);
+    const root = { userId: actor.user.id, authz: actor.authorization };
+    await automation.update(root, 'frameworkAdvisor.dictionaryReview', {
+      enabled: true,
+      ownerUserId: user.id,
+    });
+    await authz.permissionSets.revoke(assignment.id);
+    const before = calls;
+    try {
+      const result = await cost('ordinary-production-revoked', () =>
+        container
+          .resolve(automationTasksToken)
+          .runScheduled('frameworkAdvisor.dictionaryReview', 'manual'),
+      );
+      expect(result.status).toBe('failed');
+      expect(calls).toBe(before);
+      const run = await app.connection
+        .repository('aiTaskRuns')
+        .findOne({ filter: { id: result.runId } });
+      expect(run?.conversationSessionId).toBeNull();
+      expect(run?.fallback).toBe(false);
+    } finally {
+      await automation.update(root, 'frameworkAdvisor.dictionaryReview', {
+        ownerUserId: actor.user.id,
+      });
+    }
+  });
+  it.each(['checklist', 'observation', 'translation'] as const)(
+    'refuses a restricted request before dispatching work as a stored owner: %s',
+    async (path) => {
+      const container = app.application.container;
+      const authorization = container.resolve(authorizationToken).for({
+        ...actor.authorization.identity,
+        keyScope: {
+          keyId: 'controlled-dispatch',
+          allows: () => true,
+          objects: () => [],
+          permissions: null,
+        },
+      });
+      const ctx = { userId: actor.user.id, authz: authorization };
+      const service = container.resolve(talentReviewServicesToken);
+      await expect(
+        cost('restricted-dispatch-' + path, () =>
+          path === 'checklist'
+            ? service.draftChecklist(ctx, {})
+            : path === 'observation'
+              ? service.structureRecord(ctx, 'unknown')
+              : service.translations.request(ctx, 'course', 'unknown'),
+        ),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    },
+  );
+  it.each([
+    'success',
+    'empty',
+    'invalid',
+    'provider-failure',
+    'unavailable',
+  ] as const)(
+    'preserves weekly brief facts and rule fallback through the actual native connection: %s',
+    async (kind) => {
+      const container = app.application.container;
+      const platform = container.resolve(platformToken);
+      const insights = container.resolve(insightServiceToken);
+      const licensed = container.resolve(licensedServicesToken);
+      const owner = await container.resolve(userManagementServiceToken).create({
+        name: 'Controlled brief owner',
+        username: 'brief_' + kind.replaceAll('-', '_'),
+        email: 'brief_' + kind + '@example.invalid',
+        password: randomBytes(24).toString('hex'),
+      });
+      await app.connection.repository('departments').createOne({
+        values: {
+          id: 'brief-' + kind,
+          title: 'Controlled brief team',
+          managerId: owner.id,
+          active: true,
+          sortOrder: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+      const facts = {
+        newThisWeek: ['Synthetic member'],
+        expiringSoon: [],
+        expired: [],
+        missing: [],
+      };
+      // Same business-facts boundary as the former isolated brief test, now with real native SDK/persistence.
+      const weekly = vi
+        .spyOn(insights, 'weeklyFacts')
+        .mockImplementation(async (ctx) =>
+          ctx.userId === owner.id ? facts : (undefined as never),
+        );
+      const lost = vi.spyOn(licensed, 'lostThisWeek').mockResolvedValue([]);
+      const notify = vi.spyOn(platform, 'notify');
+      const services = container.resolve(agentsToken).models.services;
+      const service = (await services.list())[0]!;
+      text = JSON.stringify(
+        kind === 'success'
+          ? { brief: 'A'.repeat(240) }
+          : kind === 'empty'
+            ? { brief: '  ' }
+            : { wrong: true },
+      );
+      fail = kind === 'provider-failure';
+      if (kind === 'unavailable')
+        await services.update(service.name, { enabled: false });
+      const before = calls;
+      try {
+        const result = await cost('weekly-native-' + kind, () =>
+          runWeeklyBriefs(container, 'UTC'),
+        );
+        expect(result).toMatchObject({ sent: 1, fallback: kind !== 'success' });
+        expect(calls - before).toBe(kind === 'unavailable' ? 0 : 1);
+        expect(
+          weekly.mock.calls.filter(([ctx]) => ctx.userId === owner.id),
+        ).toHaveLength(1);
+        const notification = notify.mock.calls.find(
+          ([input]) => input.message === 'weeklyBrief',
+        )?.[0];
+        expect(notification).toMatchObject({
+          userIds: [owner.id],
+          params: {
+            brief:
+              kind === 'success'
+                ? 'A'.repeat(200)
+                : '本周新增持证 1 人：Synthetic member',
+          },
+        });
+        if (kind !== 'unavailable')
+          expect(JSON.stringify(requests.at(-1)?.messages)).toContain(
+            'Synthetic member',
+          );
+        if (kind !== 'unavailable')
+          expect(requests.at(-1)?.tools ?? []).toHaveLength(0);
+      } finally {
+        fail = false;
+        weekly.mockRestore();
+        lost.mockRestore();
+        notify.mockRestore();
+        if (kind === 'unavailable')
+          await services.update(service.name, { enabled: true });
+        await app.connection
+          .repository('departments')
+          .deleteOne({ filter: { id: 'brief-' + kind } });
+      }
+    },
+  );
+  it('rejects a scope-bearing ordinary generation entry before any model probe or persistence', async () => {
+    const container = app.application.container;
+    const authorization = container.resolve(authorizationToken).for({
+      ...actor.authorization.identity,
+      keyScope: {
+        keyId: 'controlled-background-scope',
+        allows: () => true,
+        objects: () => [],
+        permissions: null,
+      },
+    });
+    const defaults = vi.spyOn(
+      container.resolve(agentsToken).models.services,
+      'defaults',
+    );
+    try {
+      await expect(
+        cost('ordinary-restricted-entry', () =>
+          createNativeStructuredAI(container).structured({
+            userId: actor.user.id,
+            authorization,
+            employee: 'frameworkAdvisor',
+            title: 'Controlled background',
+            prompt: 'No HR data',
+            schema: z.object({ ok: z.boolean() }),
+            timeZone: 'UTC',
+          }),
+        ),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+      expect(defaults).not.toHaveBeenCalled();
+    } finally {
+      defaults.mockRestore();
+    }
+  });
+  it.each(['valid', 'invalid', 'restricted', 'revoked'] as const)(
+    'uses the native settings tool without automatically applying configuration: %s',
+    async (outcome) => {
+      const container = app.application.container;
+      const authz = container.resolve(authorizationToken);
+      let entry = actor;
+      if (outcome === 'restricted')
+        entry = {
+          ...actor,
+          authorization: authz.for({
+            ...actor.authorization.identity,
+            keyScope: {
+              keyId: 'controlled-settings-scope',
+              allows: () => true,
+              objects: () => [],
+              permissions: null,
+            },
+          }),
+        };
+      if (outcome === 'revoked') {
+        const user = await container
+          .resolve(userManagementServiceToken)
+          .create({
+            name: 'Controlled settings administrator',
+            username: 'native_settings',
+            email: 'native_settings@example.invalid',
+            password: randomBytes(24).toString('hex'),
+          });
+        await authz.permissionSets.create({
+          key: 'native-settings-tool',
+          grants: [authz.settings.grant('talent.hr', ['administer'])],
+        });
+        await authz.permissionSets.create({
+          key: 'native-settings-entry',
+          grants: [
+            aiAssistantResource
+              .reference()
+              .grant({ use: { employees: 'allRecords' } }),
+          ],
+        });
+        await authz.permissionSets.assign({
+          subject: { type: 'user', id: user.id },
+          permissionSet: 'native-settings-entry',
+        });
+        const assignment = await authz.permissionSets.assign({
+          subject: { type: 'user', id: user.id },
+          permissionSet: 'native-settings-tool',
+        });
+        entry = await actorContext(user.id);
+        // The admitted actor still has its original subjects; tool execution must refresh them.
+        await entry.authorization.require({
+          resource: { type: 'settings', id: 'talent.hr' },
+          action: 'administer',
+        });
+        await authz.permissionSets.revoke(assignment.id);
+        const fresh = await actorContext(user.id);
+        const decision = await fresh.authorization.authorize({
+          resource: { type: 'composite', id: 'talent.aiAssistant' },
+          action: 'use',
+        });
+        expect(decision.effect).not.toBe('deny');
+        expect(decision.conditions).toHaveProperty('database.employees');
+      }
+      const settings = container.resolve(personnelSettingsToken);
+      const drafts = container.resolve(settingsDraftServiceToken);
+      const beforeSettings = await settings.read('reminders');
+      const beforeRows = await app.connection
+        .repository('settingsChangeLog')
+        .count();
+      const apply = vi.spyOn(settings, 'update');
+      const draft = vi.spyOn(drafts, 'draft');
+      tool = {
+        name: 'draftSettingsChange',
+        args: JSON.stringify({
+          utterance: 'Controlled reminder proposal',
+          items: [
+            {
+              type: 'setting',
+              section: outcome === 'invalid' ? 'salary' : 'reminders',
+              changes: { probationDays: 17 },
+            },
+          ],
+        }),
+      };
+      try {
+        const session = await container
+          .resolve(agentsToken)
+          .onlineAgent.realtime(entry);
+        await cost('settings-native-' + outcome, async () => {
+          await session.send([
+            {
+              role: 'user',
+              content: 'Draft a reminder change. Keep it pending my review.',
+            },
+          ]);
+          const stream = await session.receive();
+          if (stream) await Array.fromAsync(stream);
+        });
+        expect(apply).not.toHaveBeenCalled();
+        expect(await settings.read('reminders')).toEqual(beforeSettings);
+        expect(
+          await app.connection.repository('settingsChangeLog').count(),
+        ).toBe(beforeRows + (outcome === 'valid' ? 1 : 0));
+        expect(draft).toHaveBeenCalledTimes(
+          outcome === 'valid' || outcome === 'revoked' ? 1 : 0,
+        );
+        const history = JSON.stringify(await session.history());
+        if (outcome === 'invalid') {
+          // SDK input validation rejects malformed arguments before the adapter. Public history omits that invalid tool part.
+          expect(history).not.toContain('/settings/personnel');
+          expect(history).not.toContain('output-available');
+        } else
+          expect(history).toContain(
+            outcome === 'valid' ? '/settings/personnel' : 'output-error',
+          );
+        if (outcome === 'valid') {
+          const changes = await drafts.list({
+            authz: actor.authorization,
+            userId: actor.user.id,
+          });
+          expect(changes[0]).toMatchObject({
+            status: 'draft',
+            items: [{ status: 'draft' }],
+          });
+        }
+      } finally {
+        apply.mockRestore();
+        draft.mockRestore();
+      }
+    },
+  );
   it('stops a live native response and restores its saved partial message', async () => {
     text = 'A controlled partial reply';
     hold = true;

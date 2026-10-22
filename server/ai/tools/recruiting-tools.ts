@@ -174,7 +174,7 @@ export const parseResume = tool({
       throw new HrError('APPLICATION_NOT_FOUND', 404);
     const result = await s.assistant.parseResume(
       null,
-      actor.userId,
+      actor,
       application.candidateId,
     );
     return { status: result.status };

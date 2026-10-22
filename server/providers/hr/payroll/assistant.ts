@@ -20,6 +20,7 @@
  * owner with its own tools; without one, only hr.payroll is told. Without a
  * model, a rule-based note is written instead.
  */
+import type { StructuredAI } from '../../native-ai/structured.js';
 import { z } from 'zod';
 
 import { AIUnavailableError, type AIRunner } from '../ai-runner.js';
@@ -102,7 +103,7 @@ export function createPayrollAssistant(deps: {
   anomalies: AnomalyCheck;
   bills: VendorBillService;
   automation: () => AutomationService;
-  ai: AIRunner;
+  ai: StructuredAI & Pick<AIRunner, 'reply'>;
 }) {
   const { ctx, cycles, anomalies, bills } = deps;
   const { database } = ctx.platform;
@@ -338,6 +339,7 @@ export function createPayrollAssistant(deps: {
           const { data, sessionId } = await deps.ai.structured({
             employee: 'hrAssistant',
             userId: run.owner.userId,
+            authorization: run.owner.authz,
             title: `算薪异常检查 ${report.month}`,
             prompt: [
               `为 ${report.month} 的算薪异常逐条写说明（每条不超过 120 字），交给薪酬专员复核。`,
