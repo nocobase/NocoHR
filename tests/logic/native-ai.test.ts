@@ -6,8 +6,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createTestApp, type TestApp } from '@nocobase/app-testing/server';
 import { agentsToken } from '@nocobase/app-plugin-agents/server/tokens';
 import { userManagementServiceToken } from '@nocobase/app-plugin-users/server/tokens';
+import { learningCoachResource } from '../../server/providers/hr/training-resources.js';
 import { aiAssistantResource } from '../../server/providers/hr/authz-resources.js';
 import { authorizationToken } from '@nocobase/app-plugin-authorization/server';
+import {
+  automationServiceToken,
+  automationTasksToken,
+} from '../../server/providers/hr/tokens.js';
 import { hrCoreServiceToken } from '../../server/providers/hr/tokens.js';
 import { z } from 'zod';
 import { createStandaloneServer } from '../../server/standalone.js';
@@ -303,6 +308,291 @@ describe('native AI application composition', () => {
       ),
     ).rejects.toMatchObject({ code: 'OUTPUT_INVALID' });
   });
+  it.each(['valid', 'invalid'] as const)(
+    'uses the production learning connection from model selection to stored draft: %s',
+    async (output) => {
+      const db = app.connection;
+      const container = app.application.container;
+      const stamp = { createdAt: new Date(), updatedAt: new Date() };
+      const suffix = 'learning-' + output;
+      const owner = await container.resolve(userManagementServiceToken).create({
+        name: 'Controlled learning manager',
+        username: 'manager_' + output,
+        email: 'manager_' + output + '@example.invalid',
+        password: randomBytes(24).toString('hex'),
+      });
+      const authz = container.resolve(authorizationToken);
+      await authz.permissionSets.create({
+        key: suffix,
+        grants: [
+          learningCoachResource.reference().grant({
+            use: {
+              employees: 'talent.managedDepartments',
+              learningPlans: 'allRecords',
+            },
+            configure: {
+              aiAutomationSettings: 'allRecords',
+              aiTaskRuns: 'allRecords',
+              aiTaskRunItems: 'allRecords',
+            },
+          }),
+        ],
+      });
+      await authz.permissionSets.assign({
+        subject: { type: 'user', id: owner.id },
+        permissionSet: suffix,
+      });
+      await db.repository('departments').createOne({
+        values: {
+          id: suffix,
+          title: 'Controlled learning department',
+          active: true,
+          sortOrder: 0,
+          managerId: owner.id,
+          ...stamp,
+        },
+      });
+      await db.repository('employees').createOne({
+        values: {
+          id: suffix + '-manager',
+          employeeNo: suffix + '-manager',
+          name: 'Controlled learning manager',
+          userId: owner.id,
+          departmentId: suffix,
+          status: 'active',
+          employmentType: 'fullTime',
+          syncLocked: false,
+          ...stamp,
+        },
+      });
+      await db.repository('jobFamilies').createOne({
+        values: {
+          id: suffix,
+          code: suffix,
+          title: 'Controlled family',
+          active: true,
+          sortOrder: 0,
+          ...stamp,
+        },
+      });
+      await db.repository('positions').createOne({
+        values: {
+          id: suffix,
+          code: suffix,
+          title: 'Controlled position',
+          jobFamilyId: suffix,
+          departmentId: suffix,
+          active: true,
+          sortOrder: 0,
+          isKey: false,
+          ...stamp,
+        },
+      });
+      await db.repository('competencies').createOne({
+        values: {
+          id: suffix,
+          code: suffix,
+          title: 'Controlled skill',
+          category: 'skill',
+          maxLevel: 5,
+          source: 'manual',
+          reviewStatus: 'confirmed',
+          active: true,
+          ...stamp,
+        },
+      });
+      await db.repository('positionRequirements').createOne({
+        values: {
+          id: suffix,
+          positionId: suffix,
+          competencyId: suffix,
+          requiredLevel: 3,
+          mandatory: true,
+          source: 'manual',
+          reviewStatus: 'confirmed',
+          ...stamp,
+        },
+      });
+      await db.repository('employees').createOne({
+        values: {
+          id: suffix,
+          employeeNo: suffix,
+          name: 'Controlled learner',
+          departmentId: suffix,
+          positionId: suffix,
+          status: 'active',
+          employmentType: 'fullTime',
+          syncLocked: false,
+          ...stamp,
+        },
+      });
+      await db.repository('employees').createOne({
+        values: {
+          id: suffix + '-outside',
+          employeeNo: suffix + '-outside',
+          name: 'Out-of-scope controlled learner',
+          departmentId: 'controlled-team',
+          positionId: suffix,
+          status: 'active',
+          employmentType: 'fullTime',
+          syncLocked: false,
+          ...stamp,
+        },
+      });
+      await db.repository('employeeCompetencies').createOne({
+        values: {
+          id: suffix + '-outside',
+          employeeId: suffix + '-outside',
+          competencyId: suffix,
+          level: 1,
+          source: 'manual',
+          assessedBy: actor.user.id,
+          assessedAt: new Date(),
+          ...stamp,
+        },
+      });
+      await db.repository('courses').createOne({
+        values: {
+          id: suffix,
+          title: 'Controlled course',
+          ownerUserId: actor.user.id,
+          source: 'manual',
+          reviewStatus: 'confirmed',
+          published: true,
+          active: true,
+          deliveryMode: 'online',
+          kind: 'course',
+          version: 1,
+          locale: 'en-US',
+          ...stamp,
+        },
+      });
+      await db.repository('courseCompetencies').createOne({
+        values: {
+          id: suffix,
+          courseId: suffix,
+          competencyId: suffix,
+          ...stamp,
+        },
+      });
+      const ctx = { userId: actor.user.id, authz: actor.authorization };
+      await db.repository('employeeCompetencies').createOne({
+        values: {
+          id: suffix,
+          employeeId: suffix,
+          competencyId: suffix,
+          level: 1,
+          source: 'manual',
+          assessedBy: owner.id,
+          assessedAt: new Date(),
+          ...stamp,
+        },
+      });
+      await container
+        .resolve(automationServiceToken)
+        .update(ctx, 'learningCoach.gapPlans', {
+          enabled: true,
+          ownerUserId: owner.id,
+        });
+      const draft = {
+        summary: 'Controlled native draft',
+        items: [
+          {
+            type: 'course',
+            refId: suffix,
+            competencyId: suffix,
+            reason: 'Closes the known gap',
+            dueInDays: 14,
+          },
+        ],
+      };
+      text =
+        output === 'valid'
+          ? JSON.stringify(draft)
+          : 'Unstructured native result';
+      const online = container.resolve(agentsToken).onlineAgent;
+      const originalBackground = online.background.bind(online);
+      let sessionId: string | undefined;
+      const background = vi
+        .spyOn(online, 'background')
+        .mockImplementation(async (...args) => {
+          const session = await originalBackground(...args);
+          sessionId = session.sessionId;
+          return session;
+        });
+      const before = calls;
+      const beforeAssignments = await db.repository('assignments').count();
+      try {
+        const result = await cost('learning-production-' + output, () =>
+          container
+            .resolve(automationTasksToken)
+            .runScheduled('learningCoach.gapPlans', 'manual'),
+        );
+        expect(result.status).toBe('succeeded');
+        expect(calls - before).toBe(1);
+        expect(background).toHaveBeenCalledOnce();
+        expect(background.mock.calls[0]?.[0].user.id).toBe(owner.id);
+        expect(requests.at(-1)?.tools ?? []).toHaveLength(0);
+        const plans = await db
+          .repository('learningPlans')
+          .findMany({ filter: { employeeId: suffix } });
+        expect(plans).toHaveLength(1);
+        expect(plans[0]?.summary).toEqual(
+          output === 'valid'
+            ? draft.summary
+            : expect.stringContaining('Controlled learner'),
+        );
+        const items =
+          typeof plans[0]?.items === 'string'
+            ? JSON.parse(plans[0].items)
+            : plans[0]?.items;
+        expect(items).toMatchObject([
+          { type: 'course', refId: suffix, competencyId: suffix },
+        ]);
+        expect(
+          await db
+            .repository('learningPlans')
+            .count({ filter: { employeeId: suffix + '-outside' } }),
+        ).toBe(0);
+        expect(plans[0]).toMatchObject({
+          status: 'draft',
+          reviewerUserId: owner.id,
+          source: 'ai',
+        });
+        expect(await db.repository('assignments').count()).toBe(
+          beforeAssignments,
+        );
+        expect(
+          await db
+            .repository('assignments')
+            .count({ filter: { employeeId: suffix } }),
+        ).toBe(0);
+        const run = await db
+          .repository('aiTaskRuns')
+          .findOne({ filter: { id: result.runId } });
+        expect(run).toMatchObject({
+          status: 'succeeded',
+          fallback: output === 'invalid',
+        });
+        expect(run?.conversationSessionId).toBe(
+          output === 'valid' ? sessionId : null,
+        );
+        const native = await container
+          .resolve(agentsToken)
+          .conversations.get(owner.id, sessionId!);
+        expect(native.execution?.outcome).toBe(
+          output === 'valid' ? 'completed' : 'failed',
+        );
+        expect(
+          await db
+            .repository('aiTaskRunItems')
+            .count({ filter: { runId: result.runId } }),
+        ).toBe(1);
+      } finally {
+        background.mockRestore();
+      }
+    },
+  );
   it('rejects a different owner before replaying history or running a model', async () => {
     const online = app.application.container.resolve(agentsToken).onlineAgent;
     const session = await online.realtime(actor);
@@ -505,6 +795,189 @@ describe('native AI application composition', () => {
     } finally {
       operation.mockRestore();
     }
+  });
+  it.each(
+    (
+      [
+        'realtime-read',
+        'background-read',
+        'restored-read',
+        'realtime-write',
+        'restored-write',
+      ] as const
+    ).flatMap((path) =>
+      [false, true].map((allowsUse) => ({ path, allowsUse })),
+    ),
+  )(
+    'refuses restricted service credentials before rebuilding HR identity: $path / use=$allowsUse',
+    async ({ path, allowsUse }) => {
+      const container = app.application.container;
+      const authorization = container.resolve(authorizationToken);
+      const restricted = authorization.for({
+        ...actor.authorization.identity,
+        keyScope: {
+          keyId: 'controlled-restricted-entry',
+          allows: (resource, action) =>
+            allowsUse &&
+            resource.type === 'composite' &&
+            resource.id === 'talent.aiAssistant' &&
+            action === 'use',
+          objects: () => [],
+          permissions: allowsUse
+            ? [
+                {
+                  resource: { type: 'composite', id: 'talent.aiAssistant' },
+                  actions: ['use'],
+                },
+              ]
+            : [],
+        },
+      });
+      expect(
+        (
+          await restricted.authorize({
+            resource: { type: 'composite', id: 'talent.aiAssistant' },
+            action: 'use',
+          })
+        ).effect === 'deny',
+      ).toBe(!allowsUse);
+      const entry = { ...actor, authorization: restricted };
+      const core = container.resolve(hrCoreServiceToken);
+      const read = vi.spyOn(core, 'myHrProfile');
+      const write = vi.spyOn(core, 'requestProfileChange');
+      const subjects = vi.spyOn(authorization.subjects, 'resolveFor');
+      const online = container.resolve(agentsToken).onlineAgent;
+      const beforeRequests = await app.connection
+        .repository('profileChangeRequests')
+        .count();
+      try {
+        const reading = path.endsWith('read');
+        tool = reading
+          ? { name: 'getMyHrProfile', args: '{}' }
+          : {
+              name: 'submitMyProfileChange',
+              args: '{"changes":{"address":"Restricted proposal"}}',
+            };
+        if (path === 'background-read') {
+          const session = await online.background(entry);
+          await cost('restricted-background-read', async () => {
+            await session.run(
+              [
+                {
+                  role: 'user',
+                  content: 'Read through a restricted service entry',
+                },
+              ],
+              {
+                type: 'object',
+                properties: { ok: { type: 'boolean' } },
+                required: ['ok'],
+                additionalProperties: false,
+              },
+            );
+            await session.try({ wait: 1000 });
+          });
+          expect(JSON.stringify(await session.history())).not.toContain(
+            'Controlled employee',
+          );
+        } else {
+          let session = await online.realtime(
+            path.startsWith('restored-') ? actor : entry,
+          );
+          if (path === 'restored-read')
+            session = await online.realtime(entry, {
+              sessionId: session.sessionId,
+            });
+          await cost(
+            'restricted-' + path + '-request-use-' + allowsUse,
+            async () => {
+              await session.send([
+                { role: 'user', content: 'Use this restricted service entry' },
+              ]);
+              const stream = await session.receive();
+              if (stream) await Array.fromAsync(stream);
+            },
+          );
+          if (!reading) {
+            const message = (await session.history()).at(-1)!;
+            const part = message.parts.find(
+              (p) => 'approval' in p && p.approval?.id,
+            );
+            if (
+              !part ||
+              !('approval' in part) ||
+              !part.approval ||
+              !message.metadata?.executionId
+            )
+              throw new Error('Missing approval');
+            if (path === 'restored-write')
+              session = await online.realtime(entry, {
+                sessionId: session.sessionId,
+              });
+            await cost('restricted-' + path, async () => {
+              await session.approve({
+                messageId: message.id,
+                executionId: message.metadata!.executionId!,
+                approval: { id: part.approval!.id, approved: true },
+              });
+              const stream = await session.receive();
+              if (stream) await Array.fromAsync(stream);
+            });
+          }
+          const history = JSON.stringify(await session.history());
+          expect(history).not.toContain('Controlled employee');
+          expect(history).toContain('output-error');
+        }
+        expect(read).not.toHaveBeenCalled();
+        expect(write).not.toHaveBeenCalled();
+        expect(subjects).not.toHaveBeenCalled();
+        expect(
+          await app.connection.repository('profileChangeRequests').count(),
+        ).toBe(beforeRequests);
+      } finally {
+        read.mockRestore();
+        write.mockRestore();
+        subjects.mockRestore();
+      }
+    },
+  );
+  it('refuses restricted learning entry before model selection or native persistence', async () => {
+    const authorization = app.application.container.resolve(authorizationToken);
+    const restricted = authorization.for({
+      ...actor.authorization.identity,
+      keyScope: {
+        keyId: 'controlled-restricted-learning',
+        allows: () => false,
+        objects: () => [],
+        permissions: [],
+      },
+    });
+    const online = app.application.container.resolve(agentsToken).onlineAgent;
+    const background = vi.spyOn(online, 'background');
+    try {
+      await expect(
+        cost('restricted-learning-entry', () =>
+          generateLearningPlan(
+            online,
+            { ...actor, authorization: restricted },
+            'Restricted learning data',
+            z.object({ ok: z.boolean() }),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+      expect(background).not.toHaveBeenCalled();
+    } finally {
+      background.mockRestore();
+    }
+  });
+  it('never returns stored model credentials in service responses', async () => {
+    const payload = JSON.stringify(
+      await app.application.container
+        .resolve(agentsToken)
+        .models.services.list(),
+    );
+    expect(payload).not.toContain('synthetic-key');
+    expect(payload).toContain('apiKeySet');
   });
   it('stops a live native response and restores its saved partial message', async () => {
     text = 'A controlled partial reply';

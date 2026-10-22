@@ -7,6 +7,7 @@ import {
 } from '@nocobase/app-plugin-agents/server/tokens';
 import type { OnlineAgentJson } from '@nocobase/app-plugin-agents/server/online-agent';
 import { z } from 'zod';
+import { assertUnrestrictedNativeAIEntry } from './access.js';
 import { getMyHrProfile } from '../../ai/tools/hr-assistant-tools.js';
 import { submitMyProfileChange } from '../../ai/tools/hr-assistant-change-tools.js';
 import { authorizeAction, scopeForUser } from '../hr/authorize.js';
@@ -71,6 +72,7 @@ export default class NativeAIProvider extends ServiceProvider<Application> {
           },
           execute: async (input, { context }) => {
             context.signal.throwIfAborted();
+            assertUnrestrictedNativeAIEntry(context.authorization);
             const authz = await scopeForUser(
               container.resolve(authorizationToken),
               context.user.id,
