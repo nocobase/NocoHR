@@ -1083,6 +1083,9 @@ describe('certificate lifecycle, renewal and external certificates', () => {
       `/external-certificates/${id}/scan`,
     );
     expect(scan.json.data.id).toBe(fileId);
+    expect(scan.json.data.contentUrl).toContain(
+      `/uploads/certificate-scans/${fileId}.png`,
+    );
     expect(
       (await call('emp_njl_2', 'GET', `/external-certificates/${id}/scan`))
         .status,
