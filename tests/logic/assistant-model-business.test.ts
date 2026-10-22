@@ -1,5 +1,4 @@
 // @vitest-environment node
-import { randomUUID } from 'node:crypto';
 import { afterEach, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
@@ -13,15 +12,11 @@ import {
   AIShapeError,
   AIUnavailableError,
 } from '../../server/providers/hr/ai-runner.js';
-import { createImChannel } from '../../server/providers/hr/im-channel.js';
-import { createAiEntryService } from '../../server/providers/hr/ai-entry-service.js';
 import { createTrainingAutomation } from '../../server/providers/hr/training-automation.js';
 import { createPlanService } from '../../server/providers/hr/plan-service.js';
 import { planServiceToken } from '../../server/providers/hr/tokens.js';
-import type { HrCoreService } from '../../server/providers/hr/core-service.js';
 import type { AutomationRunContext } from '../../server/providers/hr/automation.js';
 import type { PathService } from '../../server/providers/hr/path-service.js';
-import zh from '../../server/locales/zh-CN.js';
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -231,145 +226,6 @@ async function seedBound(f: Awaited<ReturnType<typeof fixture>>) {
     },
   });
 }
-function bot(f: Awaited<ReturnType<typeof fixture>>) {
-  const entry = createAiEntryService({
-    database: f.db,
-    ai: f.runner,
-    timeZone: 'UTC',
-    holdersOf: async () => [],
-    permissionSetKeys: async () => [],
-    employees: async () => [...f.employees.keys()],
-  });
-  const core = {
-    selfServiceFields: async () => ({ fields: ['mobile'], customFields: [] }),
-    requestProfileChange: vi.fn(),
-  } as unknown as HrCoreService;
-  const translate = (key: string, params?: Record<string, unknown>): string => {
-    let value: unknown = zh;
-    for (const part of key.split('.'))
-      value = (value as Record<string, unknown>)?.[part];
-    return typeof value === 'string'
-      ? value.replace(/\{\{?(\w+)\}?\}/gu, (_all, name: string) =>
-          String(params?.[name] ?? name),
-        )
-      : key;
-  };
-  const channel = createImChannel({
-    platform: f.platform,
-    entry: () => entry,
-    ai: f.runner,
-    core: () => core,
-    publicUrl: (p) => 'https://synthetic.invalid' + p,
-    translate: async () => translate,
-    warn: () => undefined,
-    production: false,
-  });
-  const handle = (text: string) =>
-    channel.handle({
-      provider: 'feishu',
-      messageId: randomUUID(),
-      chatType: 'p2p',
-      senderExternalId: 'external-owner',
-      text,
-    });
-  return { channel, handle, core };
-}
-
-it('routes Feishu through the actual runner, masks replies, continues one session and does not replay a completed tool', async () => {
-  const f = await fixture();
-  await seedBound(f);
-  const b = bot(f);
-  f.answers.push(
-    { structured: { key: 'myRecord' } },
-    { tool: { name: 'backgroundAction', args: '{"value":42}' } },
-    { text: '13800000000 11010119900101001X' },
-  );
-  const first = await f.cost('feishu-route-and-tool-reply', () =>
-    b.handle('查看我的档案'),
-  );
-  expect(first.reply).toContain('138****0000');
-  expect(first.reply).toContain('110101********001X');
-  expect(first.reply).not.toContain('13800000000');
-  expect(f.state.invokes).toBe(1);
-  const session = (await f.service.list(actor))[0]!.id;
-  const calls = await f.calls.list(session);
-  expect(calls[0]).toMatchObject({
-    modelCallId: 'stable-call',
-    arguments: { value: 42 },
-    status: 'completed',
-  });
-  f.answers.push({ text: 'Follow-up' });
-  await f.cost('feishu-follow-up', () => b.handle('那个结果呢'));
-  expect(f.state.invokes).toBe(1);
-  expect(await f.service.list(actor)).toHaveLength(1);
-  expect(f.requests).toHaveLength(4);
-  const last = f.requests.at(-1)!;
-  expect(last.messages.some((m) => m.role === 'tool')).toBe(true);
-});
-
-it('keeps Feishu ASK pending, drops its cached session, and turns profile changes into an unconfirmed masked card', async () => {
-  const f = await fixture();
-  await seedBound(f);
-  const b = bot(f);
-  f.state.policy = 'ask';
-  f.answers.push(
-    { structured: { key: 'myRecord' } },
-    { tool: { name: 'backgroundAction', args: '{"value":42}' } },
-  );
-  const paused = await f.cost('feishu-route-and-ask', () =>
-    b.handle('查看我的档案'),
-  );
-  expect(paused.reply).toContain('确认');
-  expect(f.state.invokes).toBe(0);
-  f.answers.push({ text: 'Fresh session' });
-  await b.handle('那个结果呢');
-  expect(await f.service.list(actor)).toHaveLength(2);
-  f.answers.push(
-    { structured: { key: 'myRecord' } },
-    {
-      tool: {
-        name: 'submitMyProfileChange',
-        args: '{"changes":{"mobile":"13900000000"}}',
-      },
-    },
-  );
-  const card = await f.cost('feishu-profile-card', () =>
-    b.handle('修改手机号'),
-  );
-  expect(card.cards).toHaveLength(1);
-  expect(f.state.invokes).toBe(0);
-  expect(b.core.requestProfileChange).not.toHaveBeenCalled();
-  const stored = await f.db.repository('imCards').findMany();
-  expect(stored[0]!.status).toBe('open');
-  expect(JSON.stringify(b.channel.mockOutbox!('external-owner'))).not.toContain(
-    '13900000000',
-  );
-  const view = JSON.stringify(await b.channel.cards.view(card.cards![0]!));
-  expect(view).toContain('139****0000');
-  expect(view).not.toContain('13900000000');
-  const pending = (
-    await f.db.repository('assistantToolCalls').findMany()
-  ).filter((row) => row.tool === 'submitMyProfileChange');
-  expect(pending[0]!.status).toBe('pending');
-});
-
-it('does not send pay questions to the Feishu reply model and refuses revoked access before routing', async () => {
-  const f = await fixture();
-  await seedBound(f);
-  const b = bot(f);
-  f.answers.push({ structured: { key: 'myPay' } });
-  const result = await f.cost('feishu-pay-route-only', () =>
-    b.handle('我的工资是多少'),
-  );
-  expect(result.reply).toContain('/talent/my-payslips');
-  expect(f.requests).toHaveLength(1);
-  f.state.allowed = false;
-  await expect(b.handle('查看我的档案')).rejects.toMatchObject({
-    code: 'FORBIDDEN',
-  });
-  expect(f.requests).toHaveLength(1);
-});
-
 async function training(
   f: Awaited<ReturnType<typeof fixture>>,
   failure?: 'unavailable' | 'invalid' | 'network',

@@ -1,3 +1,17 @@
+import { writeFileSync } from 'node:fs';
+import { signCallback } from '../helpers/callback-signature.js';
+import { createFeishuTransport } from '../../server/providers/hr/feishu/transport.js';
+import { createImChannel } from '../../server/providers/hr/im-channel.js';
+import {
+  platformToken as imPlatformToken,
+  imChannelToken,
+} from '../../server/providers/hr/tokens.js';
+import { NATIVE_APPROVAL_CARD } from '../../server/providers/hr/im-cards/native-approval-card.js';
+import {
+  consumeIMResponse,
+  openIMSession,
+} from '../../server/providers/native-ai/im-session.js';
+import type { NativeApprovalBinding } from '../../server/providers/native-ai/im-session.js';
 // @vitest-environment node
 import { runWeeklyBriefs } from '../../server/providers/hr/maintenance.js';
 import {
@@ -31,6 +45,7 @@ import { learningCoachResource } from '../../server/providers/hr/training-resour
 import {
   frameworkAdvisorResource,
   aiAssistantResource,
+  profileChangeResource,
 } from '../../server/providers/hr/authz-resources.js';
 import { authorizationToken } from '@nocobase/app-plugin-authorization/server';
 import {
@@ -65,7 +80,10 @@ const loader = registerHooks({
 });
 let app: TestApp;
 let text = 'Native fixture reply';
+let routeAnswer: string | undefined;
 let calls = 0;
+let imTransportCounts:
+  { sendCard: number; sendText: number; updateCard: number } | undefined;
 const requests: { tools?: unknown[]; messages?: unknown[] }[] = [];
 let tool: { name: string; args: string } | undefined;
 const toolQueue: { name: string; args: string }[] = [];
@@ -93,9 +111,15 @@ const model = createServer(async (req, res) => {
     return;
   }
   await beforeModelReply?.();
-  const selectedTool = tool ?? toolQueue.shift();
-  tool = undefined;
-  const message = { role: 'assistant', content: text };
+  const selectedTool = input.tools?.length
+    ? (tool ?? toolQueue.shift())
+    : undefined;
+  if (input.tools?.length) tool = undefined;
+  const message = {
+    role: 'assistant',
+    content:
+      !input.tools?.length && routeAnswer !== undefined ? routeAnswer : text,
+  };
   if (input.stream) {
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     const chunk = (delta: unknown, finish_reason: string | null = null) =>
@@ -158,6 +182,9 @@ async function cost<T>(name: string, action: () => Promise<T>) {
   }>();
   const listener = (q: { sql: string }) => sql.push(q.sql);
   const before = calls;
+  const beforeTransport = imTransportCounts
+    ? { ...imTransportCounts }
+    : undefined;
   client.on('query', listener);
   try {
     return await action();
@@ -168,6 +195,56 @@ async function cost<T>(name: string, action: () => Promise<T>) {
         JSON.stringify({
           name,
           modelRequests: calls - before,
+          ...(name.startsWith('im-')
+            ? {
+                transport:
+                  imTransportCounts && beforeTransport
+                    ? Object.fromEntries(
+                        Object.entries(imTransportCounts).map(
+                          ([key, value]) => [
+                            key,
+                            value -
+                              beforeTransport[
+                                key as keyof typeof beforeTransport
+                              ],
+                          ],
+                        ),
+                      )
+                    : undefined,
+                tables: Object.fromEntries(
+                  [
+                    'imCards',
+                    'hrReminderLog',
+                    'employees',
+                    'profileChangeRequests',
+                    'agConversations',
+                    'agConversationMessages',
+                  ].map((table) => [
+                    table,
+                    Object.fromEntries(
+                      ['select', 'insert', 'update', 'delete'].map((verb) => [
+                        verb,
+                        sql.filter(
+                          (q) =>
+                            new RegExp('^' + verb + '\\b', 'i').test(q) &&
+                            new RegExp(
+                              '\\b(?:' +
+                                table +
+                                '|' +
+                                table.replace(
+                                  /[A-Z]/gu,
+                                  (letter) => '_' + letter.toLowerCase(),
+                                ) +
+                                ')\\b',
+                              'i',
+                            ).test(q),
+                        ).length,
+                      ]),
+                    ),
+                  ]),
+                ),
+              }
+            : {}),
           ...Object.fromEntries(
             ['select', 'insert', 'update', 'delete', 'begin', 'commit'].map(
               (verb) => [
@@ -183,6 +260,7 @@ async function cost<T>(name: string, action: () => Promise<T>) {
   }
 }
 beforeAll(async () => {
+  process.env.IM_CALLBACK_SECRET = 'native-im-test-only-secret';
   await new Promise<void>((resolve) => model.listen(0, '127.0.0.1', resolve));
   app = await createTestApp({
     createServer: createStandaloneServer,
@@ -244,6 +322,7 @@ afterAll(async () => {
   model.closeAllConnections();
   await new Promise<void>((resolve) => model.close(() => resolve()));
   loader.deregister();
+  delete process.env.IM_CALLBACK_SECRET;
 });
 
 describe('native AI application composition', () => {
@@ -2143,6 +2222,660 @@ describe('native AI application composition', () => {
       }
     },
   );
+  it.each([
+    'approve',
+    'reject',
+    'restart',
+    'revoked',
+    'expired',
+    'rebound',
+    'wrong-user',
+    'sessionId',
+    'messageId',
+    'executionId',
+    'approvalId',
+    'concurrent',
+    'stopped',
+    'model-failure',
+  ] as const)(
+    'continues the exact native IM approval through the production card service: %s',
+    async (outcome) => {
+      const container = app.application.container;
+      const authz = container.resolve(authorizationToken);
+      const suffix = 'im_' + outcome.replaceAll('-', '_');
+      const user = await container.resolve(userManagementServiceToken).create({
+        name: 'Controlled IM employee',
+        username: suffix,
+        email: suffix + '@example.invalid',
+        password: randomBytes(24).toString('hex'),
+      });
+      const external = 'external-' + suffix;
+      await app.connection.repository('employees').createOne({
+        values: {
+          id: suffix,
+          employeeNo: suffix,
+          name: 'Controlled IM employee',
+          userId: user.id,
+          departmentId: 'controlled-team',
+          status: 'active',
+          employmentType: 'fullTime',
+          syncLocked: false,
+          mobile: '13800000000',
+          address: 'Original address',
+          externalProvider: 'feishu',
+          externalUserId: external,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+      await authz.permissionSets.create({
+        key: suffix,
+        grants: [
+          aiAssistantResource
+            .reference()
+            .grant({ use: { employees: 'allRecords' } }),
+          profileChangeResource
+            .reference()
+            .grant({ request: { profileChangeRequests: 'allRecords' } }),
+        ],
+      });
+      const assignment = await authz.permissionSets.assign({
+        subject: { type: 'user', id: user.id },
+        permissionSet: suffix,
+      });
+      const originalChannel = container.resolve(imChannelToken);
+      let channel = originalChannel;
+      const online = container.resolve(agentsToken).onlineAgent;
+      const core = container.resolve(hrCoreServiceToken);
+      const write = vi.spyOn(core, 'requestProfileChange');
+      const start = vi.spyOn(online, 'realtime');
+      const setTimer = vi.spyOn(globalThis, 'setTimeout');
+      const clearTimer = vi.spyOn(globalThis, 'clearTimeout');
+      imTransportCounts = { sendCard: 0, sendText: 0, updateCard: 0 };
+      const transportSpies: (() => void)[] = [];
+      const observeTransport = (transport: typeof channel.transport) => {
+        for (const name of ['sendCard', 'sendText', 'updateCard'] as const) {
+          const original = transport[name].bind(transport);
+          const spy = vi
+            .spyOn(transport, name)
+            .mockImplementation((...args: unknown[]) => {
+              imTransportCounts![name]++;
+              return (original as (...values: unknown[]) => Promise<void>)(
+                ...args,
+              );
+            });
+          transportSpies.push(() => spy.mockRestore());
+        }
+      };
+      observeTransport(channel.transport);
+      let sessionId: string | undefined;
+      routeAnswer = '{"key":"myRecord"}';
+      text = 'Controlled reply 13900000000 11010119900101001X';
+      tool = {
+        name: 'submitMyProfileChange',
+        args: '{"changes":{"mobile":"13900000000"}}',
+      };
+      const incoming = {
+        provider: 'feishu' as const,
+        messageId: suffix,
+        chatType: 'p2p' as const,
+        senderExternalId: external,
+        text: '请修改我的手机号',
+      };
+      try {
+        const answer = await cost('im-card-propose-' + outcome, () =>
+          channel.handle(incoming),
+        );
+        expect(answer.cards).toHaveLength(1);
+        expect(write).not.toHaveBeenCalled();
+        const row = await app.connection
+          .repository('imCards')
+          .findOne({ filter: { id: answer.cards![0] } });
+        expect(row?.kind).toBe(NATIVE_APPROVAL_CARD);
+        let raw: unknown = row?.payload;
+        while (typeof raw === 'string') raw = JSON.parse(raw);
+        const payload = raw as NativeApprovalBinding & { display: string[] };
+        sessionId = payload.sessionId;
+        expect(row?.refId).toBe(sessionId);
+        expect(Object.keys(payload).sort()).toEqual(
+          [
+            'sessionId',
+            'messageId',
+            'executionId',
+            'approvalId',
+            'display',
+          ].sort(),
+        );
+        expect(JSON.stringify(payload)).not.toContain('13900000000');
+        const view = await channel.cards.view(answer.cards![0]!);
+        if (outcome === 'approve' && process.env.NATIVE_IM_VIEW_FILE)
+          writeFileSync(process.env.NATIVE_IM_VIEW_FILE, JSON.stringify(view));
+        expect(JSON.stringify(view)).toContain('139****0000');
+        expect(JSON.stringify(view)).not.toContain('13900000000');
+        const deadlines = setTimer.mock.calls.flatMap((args, index) =>
+          args[1] === 120_000
+            ? [setTimer.mock.results[index]!.value as unknown]
+            : [],
+        );
+        expect(deadlines.length).toBeGreaterThan(0);
+        for (const timer of deadlines)
+          expect(clearTimer).toHaveBeenCalledWith(timer);
+        const before = calls;
+        expect(
+          await cost('im-message-duplicate', () => channel.handle(incoming)),
+        ).toMatchObject({ duplicate: true });
+        const waiting = await cost('im-waiting-follow-up', () =>
+          channel.handle({
+            ...incoming,
+            messageId: suffix + '-follow',
+            text: '那个结果呢',
+          }),
+        );
+        expect(waiting.cards).toEqual(answer.cards);
+        expect(calls).toBe(before);
+        expect(write).not.toHaveBeenCalled();
+        expect(
+          (
+            await container
+              .resolve(agentsToken)
+              .conversations.get(user.id, sessionId)
+          ).execution?.waitingApproval,
+        ).toBe(true);
+        if (outcome === 'restart') {
+          channel = createImChannel({
+            platform: container.resolve(imPlatformToken),
+            entry: () => container.resolve(aiEntryServiceToken),
+            online: () => online,
+            modelAvailable: async () =>
+              Boolean(
+                (
+                  await container
+                    .resolve(agentsToken)
+                    .models.services.defaults()
+                ).effectiveChat,
+              ),
+            core: () => core,
+            publicUrl: (path) => path,
+            translate: originalChannel.translate,
+            warn: () => undefined,
+            production: false,
+          });
+          observeTransport(channel.transport);
+        }
+        if (outcome === 'revoked')
+          await authz.permissionSets.revoke(assignment.id);
+        if (outcome === 'expired') {
+          vi.useFakeTimers({ toFake: ['Date'] });
+          vi.setSystemTime(Date.now() + 25 * 60 * 60_000);
+        }
+        if (outcome === 'rebound')
+          await app.connection.repository('employees').updateOne({
+            filter: { id: suffix },
+            values: { externalUserId: external + '-new' },
+          });
+        if (
+          ['sessionId', 'messageId', 'executionId', 'approvalId'].includes(
+            outcome,
+          )
+        ) {
+          await app.connection.repository('imCards').updateOne({
+            filter: { id: row!.id },
+            values: { payload: { ...payload, [outcome]: 'wrong-binding' } },
+          });
+        }
+        if (outcome === 'wrong-user')
+          await app.connection.repository('employees').updateOne({
+            filter: { id: 'controlled-person' },
+            values: {
+              externalProvider: 'feishu',
+              externalUserId: 'other-operator',
+            },
+          });
+        if (outcome === 'stopped')
+          await (
+            await online.realtime(await actorContext(user.id), { sessionId })
+          ).abort();
+        if (outcome === 'model-failure') fail = true;
+        const callback = {
+          provider: 'feishu' as const,
+          callbackId: suffix + '-callback',
+          operatorId:
+            outcome === 'wrong-user'
+              ? 'other-operator'
+              : outcome === 'rebound'
+                ? external + '-new'
+                : external,
+          cardId: answer.cards![0]!,
+          button: outcome === 'reject' ? 'reject' : 'approve',
+          comment: null,
+        };
+        if (outcome === 'approve') {
+          const { provider: _provider, comment: _comment, ...body } = callback;
+          const raw = JSON.stringify(body);
+          const beforeSignature = calls;
+          for (const timestamp of [
+            undefined,
+            String(Math.floor(Date.now() / 1000) - 600),
+          ]) {
+            const response = await app.request('/im-callback/feishu/card', {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                ...(timestamp
+                  ? {
+                      'x-nocohr-timestamp': timestamp,
+                      'x-nocohr-signature': signCallback(
+                        'native-im-test-only-secret',
+                        timestamp,
+                        raw,
+                      ),
+                    }
+                  : {}),
+              },
+              body: raw,
+            });
+            expect(response.status).toBe(403);
+          }
+          expect(calls).toBe(beforeSignature);
+          expect(write).not.toHaveBeenCalled();
+        }
+        const result = await cost('im-card-callback-' + outcome, async () => {
+          if (outcome === 'concurrent') {
+            const results = await Promise.all([
+              channel.cards.handleCallback(callback),
+              channel.cards.handleCallback({
+                ...callback,
+                callbackId: callback.callbackId + '-concurrent',
+              }),
+            ]);
+            expect(results.filter((item) => item.ok)).toHaveLength(1);
+            return results.find((item) => item.ok)!;
+          }
+          if (outcome === 'approve' || outcome === 'reject') {
+            const {
+              provider: _provider,
+              comment: _comment,
+              ...body
+            } = callback;
+            const raw = JSON.stringify(body);
+            const timestamp = String(Math.floor(Date.now() / 1000));
+            const response = await app.request('/im-callback/feishu/card', {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                'x-nocohr-timestamp': timestamp,
+                'x-nocohr-signature': signCallback(
+                  'native-im-test-only-secret',
+                  timestamp,
+                  raw,
+                ),
+              },
+              body: raw,
+            });
+            expect(response.status).toBe(200);
+            return (
+              (await response.json()) as {
+                data: Awaited<ReturnType<typeof channel.cards.handleCallback>>;
+              }
+            ).data;
+          }
+          return channel.cards.handleCallback(callback);
+        });
+        const accepted = [
+          'approve',
+          'reject',
+          'restart',
+          'concurrent',
+          'model-failure',
+        ].includes(outcome);
+        expect(result.ok).toBe(accepted);
+        expect(write).toHaveBeenCalledTimes(
+          accepted && outcome !== 'reject' ? 1 : 0,
+        );
+        const requests = await app.connection
+          .repository('profileChangeRequests')
+          .findMany({ filter: { employeeId: suffix } });
+        expect(requests).toHaveLength(accepted && outcome !== 'reject' ? 1 : 0);
+        if (requests[0])
+          expect(requests[0]).toMatchObject({
+            source: 'feishuCard',
+            status: 'pending',
+          });
+        expect(
+          (
+            await app.connection
+              .repository('employees')
+              .findOne({ filter: { id: suffix } })
+          )?.mobile,
+        ).toBe('13800000000');
+        const afterDecision = calls;
+        expect(
+          await cost('im-callback-duplicate', () =>
+            channel.cards.handleCallback(callback),
+          ),
+        ).toMatchObject({ code: 'duplicate' });
+        const different = await cost('im-callback-new-id', () =>
+          channel.cards.handleCallback({
+            ...callback,
+            callbackId: callback.callbackId + '-again',
+          }),
+        );
+        expect(different.ok).toBe(false);
+        expect(calls).toBe(afterDecision);
+        expect(write).toHaveBeenCalledTimes(
+          accepted && outcome !== 'reject' ? 1 : 0,
+        );
+        if (accepted) {
+          const restored = await online.realtime(await actorContext(user.id), {
+            sessionId,
+          });
+          await restored.history();
+          expect(calls).toBe(afterDecision);
+          expect(await restored.status()).toBe('idle');
+        }
+        if (outcome === 'approve') {
+          const oldIds = start.mock.results.length;
+          await channel.handle({
+            ...incoming,
+            messageId: suffix + '-after',
+            text: '那个结果呢',
+          });
+          expect(start.mock.calls.at(-1)?.[1]?.sessionId).toBe(sessionId);
+          expect(start.mock.results.length).toBeGreaterThan(oldIds);
+          expect(write).toHaveBeenCalledTimes(1);
+          expect(JSON.stringify(channel.mockOutbox?.(external))).not.toContain(
+            '13900000000',
+          );
+        }
+      } finally {
+        fail = false;
+        routeAnswer = undefined;
+        tool = undefined;
+        vi.useRealTimers();
+        if (sessionId)
+          await (
+            await online.realtime(await actorContext(user.id), { sessionId })
+          ).abort();
+        write.mockRestore();
+        start.mockRestore();
+        setTimer.mockRestore();
+        clearTimer.mockRestore();
+        for (const restore of transportSpies) restore();
+        imTransportCounts = undefined;
+      }
+    },
+  );
+  it('rejects unsupported restricted IM entry before identity refresh or native storage', async () => {
+    const authz = app.application.container.resolve(authorizationToken);
+    const restricted = authz.for({
+      ...actor.authorization.identity,
+      keyScope: {
+        keyId: 'im-restricted',
+        allows: () => true,
+        objects: () => [],
+        permissions: [],
+      },
+    });
+    await expect(
+      cost('im-restricted-entry', () =>
+        openIMSession(
+          app.application.container.resolve(agentsToken).onlineAgent,
+          { userId: actor.user.id, authz: restricted },
+          { provider: 'feishu', externalUserId: 'not-read' },
+        ),
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+  it('routes and masks ordinary native IM replies, isolates channels, and does not execute pay questions', async () => {
+    const channel = app.application.container.resolve(imChannelToken);
+    await app.connection.repository('employees').updateOne({
+      filter: { id: 'controlled-person' },
+      values: {
+        externalProvider: 'feishu',
+        externalUserId: 'native-chat-owner',
+      },
+    });
+    routeAnswer = '{"key":"myRecord"}';
+    text = '13900000000 11010119900101001X';
+    const input = {
+      provider: 'feishu' as const,
+      chatType: 'p2p' as const,
+      senderExternalId: 'native-chat-owner',
+      text: '查看我的档案',
+      messageId: 'im-chat',
+    };
+    const core = app.application.container.resolve(hrCoreServiceToken);
+    const read = vi.spyOn(core, 'myHrProfile');
+    tool = { name: 'getMyHrProfile', args: '{}' };
+    try {
+      const first = await cost('im-native-read', () => channel.handle(input));
+      expect(first.reply).toContain('139****0000');
+      expect(first.reply).not.toContain('13900000000');
+      expect(read).toHaveBeenCalledTimes(1);
+      await cost('im-native-follow-up', () =>
+        channel.handle({
+          ...input,
+          messageId: 'im-chat-next',
+          text: '那个结果呢',
+        }),
+      );
+      expect(read).toHaveBeenCalledTimes(1);
+      const before = calls;
+      const pay = await cost('im-pay-link', () =>
+        channel.handle({
+          ...input,
+          messageId: 'im-pay',
+          text: '我的工资是多少',
+        }),
+      );
+      expect(pay.reply).toContain('/talent/my-payslips');
+      expect(calls - before).toBe(1); // Classifier only; no chat input is admitted.
+      const unbound = await channel.handle({
+        ...input,
+        provider: 'wecom',
+        messageId: 'im-other-provider',
+      });
+      expect(unbound.handledBy).toBeNull();
+    } finally {
+      routeAnswer = undefined;
+      tool = undefined;
+      read.mockRestore();
+    }
+  });
+  it('persists native card delivery and updates through the real Feishu adapter with a controlled message API', async () => {
+    const container = app.application.container;
+    const authz = container.resolve(authorizationToken);
+    const user = await container.resolve(userManagementServiceToken).create({
+      name: 'Delivery employee',
+      username: 'im_delivery',
+      email: 'im_delivery@example.invalid',
+      password: randomBytes(24).toString('hex'),
+    });
+    await app.connection.repository('employees').createOne({
+      values: {
+        id: 'im-delivery',
+        employeeNo: 'im-delivery',
+        name: 'Delivery employee',
+        userId: user.id,
+        departmentId: 'controlled-team',
+        status: 'active',
+        employmentType: 'fullTime',
+        syncLocked: false,
+        mobile: '13800000000',
+        externalProvider: 'feishu',
+        externalUserId: 'controlled-delivery-recipient',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+    await authz.permissionSets.create({
+      key: 'im-delivery',
+      grants: [
+        aiAssistantResource
+          .reference()
+          .grant({ use: { employees: 'allRecords' } }),
+        profileChangeResource
+          .reference()
+          .grant({ request: { profileChangeRequests: 'allRecords' } }),
+      ],
+    });
+    await authz.permissionSets.assign({
+      subject: { type: 'user', id: user.id },
+      permissionSet: 'im-delivery',
+    });
+    const sent: { path: string; body: unknown }[] = [];
+    imTransportCounts = { sendCard: 0, sendText: 0, updateCard: 0 };
+    const transport = createFeishuTransport({
+      api: {
+        call: async (
+          path: string,
+          input: { method: string; body: unknown },
+        ) => {
+          sent.push({ path, body: input.body });
+          const body = input.body as { msg_type?: string };
+          if (input.method === 'PATCH') imTransportCounts!.updateCard++;
+          else if (body.msg_type === 'interactive')
+            imTransportCounts!.sendCard++;
+          else imTransportCounts!.sendText++;
+          return { message_id: 'controlled-delivery-message' };
+        },
+      } as never,
+      link: (path) => 'https://controlled.invalid' + path,
+      messages: {
+        get: async (id) => {
+          const row = await container
+            .resolve(imPlatformToken)
+            .database.query()
+            .selectFrom('imCards')
+            .select(['externalMessageId'])
+            .where('id', '=', id)
+            .executeTakeFirst();
+          return row?.externalMessageId ? String(row.externalMessageId) : null;
+        },
+        set: async (id, messageId) => {
+          await container
+            .resolve(imPlatformToken)
+            .database.query()
+            .updateTable('imCards')
+            .set({ externalMessageId: messageId })
+            .where('id', '=', id)
+            .execute();
+        },
+      },
+    });
+    const original = container.resolve(imChannelToken);
+    const online = container.resolve(agentsToken).onlineAgent;
+    const channel = createImChannel({
+      platform: container.resolve(imPlatformToken),
+      entry: () => container.resolve(aiEntryServiceToken),
+      online: () => online,
+      modelAvailable: async () =>
+        Boolean(
+          (await container.resolve(agentsToken).models.services.defaults())
+            .effectiveChat,
+        ),
+      core: () => container.resolve(hrCoreServiceToken),
+      publicUrl: (path) => path,
+      translate: original.translate,
+      warn: () => undefined,
+      production: false,
+      transport,
+    });
+    routeAnswer = '{"key":"myRecord"}';
+    text = 'Saved for HR review';
+    tool = {
+      name: 'submitMyProfileChange',
+      args: '{"changes":{"mobile":"13900000000"}}',
+    };
+    try {
+      const answer = await cost('im-feishu-delivery', () =>
+        channel.handle({
+          provider: 'feishu',
+          messageId: 'controlled-delivery',
+          chatType: 'p2p',
+          senderExternalId: 'controlled-delivery-recipient',
+          text: '请修改我的手机号',
+        }),
+      );
+      const row = await app.connection
+        .repository('imCards')
+        .findOne({ filter: { id: answer.cards![0] } });
+      expect(row?.externalMessageId).toBe('controlled-delivery-message');
+      expect(sent).toHaveLength(1);
+      expect(JSON.stringify(sent[0])).toContain('Approve assistant action');
+      expect(JSON.stringify(sent[0])).not.toContain('13900000000');
+      expect(
+        (
+          await cost('im-feishu-callback', () =>
+            channel.cards.handleCallback({
+              provider: 'feishu',
+              callbackId: 'controlled-delivery-callback',
+              operatorId: 'controlled-delivery-recipient',
+              cardId: answer.cards![0]!,
+              button: 'approve',
+              comment: null,
+            }),
+          )
+        ).ok,
+      ).toBe(true);
+      expect(
+        sent.filter((message) =>
+          message.path.endsWith('/controlled-delivery-message'),
+        ),
+      ).toHaveLength(1);
+      expect(imTransportCounts).toEqual({
+        sendCard: 1,
+        sendText: 1,
+        updateCard: 1,
+      });
+    } finally {
+      routeAnswer = undefined;
+      tool = undefined;
+      imTransportCounts = undefined;
+    }
+  });
+  it('cancels and finalizes a stalled native IM model response using a short execution budget', async () => {
+    const online = app.application.container.resolve(agentsToken).onlineAgent;
+    const ctx = { userId: actor.user.id, authz: actor.authorization };
+    await app.connection.repository('employees').updateOne({
+      filter: { id: 'controlled-person' },
+      values: {
+        externalProvider: 'feishu',
+        externalUserId: 'native-timeout-owner',
+      },
+    });
+    const session = await openIMSession(online, ctx, {
+      provider: 'feishu',
+      externalUserId: 'native-timeout-owner',
+    });
+    const closed = Promise.withResolvers<void>();
+    heldStream = { opened: () => undefined, closed: closed.resolve };
+    hold = true;
+    text = 'Partial reply';
+    try {
+      await expect(
+        cost('im-model-timeout', async () => {
+          await session.send([
+            { role: 'user', content: 'Wait for cancellation' },
+          ]);
+          await consumeIMResponse(session, 300);
+        }),
+      ).rejects.toMatchObject({ name: 'TimeoutError' });
+      await closed.promise;
+      expect(await session.status()).toBe('idle');
+      expect(
+        (
+          await app.application.container
+            .resolve(agentsToken)
+            .conversations.get(actor.user.id, session.sessionId)
+        ).execution?.outcome,
+      ).toBe('cancelled');
+    } finally {
+      hold = false;
+      heldStream = undefined;
+      await session.abort();
+    }
+  });
   it('stops a live native response and restores its saved partial message', async () => {
     text = 'A controlled partial reply';
     hold = true;

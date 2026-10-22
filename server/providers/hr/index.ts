@@ -1,3 +1,4 @@
+import { agentsToken } from '@nocobase/app-plugin-agents/server/tokens';
 import type { Application } from '@nocobase/app-server/application';
 import {
   authorizationToken,
@@ -12,7 +13,6 @@ import { loggingToken } from '@nocobase/app-server/logging';
 import { databaseManagerToken } from '@nocobase/db';
 import { ServiceProvider } from '@nocobase/service-provider';
 
-import { createAIRunner } from './ai-runner.js';
 import { createNativeBillReview } from '../native-ai/vendor-bill.js';
 import { createNativeStructuredAI } from '../native-ai/structured.js';
 import { workbenchResource } from './workbench-resource.js';
@@ -355,7 +355,15 @@ export default class HrProvider extends ServiceProvider<Application> {
       createImChannel({
         platform: this.app.container.resolve(platformToken),
         entry: () => this.app.container.resolve(aiEntryServiceToken),
-        ai: createAIRunner(this.app.container),
+        online: () => this.app.container.resolve(agentsToken).onlineAgent,
+        modelAvailable: async () =>
+          Boolean(
+            (
+              await this.app.container
+                .resolve(agentsToken)
+                .models.services.defaults()
+            ).effectiveChat,
+          ),
         // Absolute once an origin is known: a Feishu message has no base URL.
         publicUrl: (path) => this.feishuLink(path),
         // The configured Feishu app replaces the development mock channel.

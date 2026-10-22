@@ -727,6 +727,16 @@ const enUS = {
         cancelled: 'withdrawn',
       },
     },
+    nativeApproval: {
+      title: 'Approve assistant action',
+      sent: 'Check the proposed changes on the approval card.',
+      unavailable:
+        'This approval is unavailable or you no longer have permission. Check NocoHR.',
+      recorded:
+        'Your decision was recorded. Check the conversation for the result.',
+      approved: 'Approved. The assistant has continued the conversation.',
+      rejected: 'Declined. The assistant has continued the conversation.',
+    },
     profileChange: {
       title: 'Profile change request',
       submit: 'Submit',

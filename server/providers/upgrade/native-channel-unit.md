@@ -1,6 +1,6 @@
-# Native routing and vendor-bill tools
+# Native routing, vendor-bill tools and IM approvals
 
-Routing and vendor-bill review now use native Agents services. The Feishu/IM conversation and approval-card cutover is pending a decision on a new application card binding; it is not implemented or enabled. The complete template upgrade remains unaccepted: keep the pull request in draft and do not deploy.
+Routing, vendor-bill review and private IM replies now use native Agents services. The approved card binding continues the original native execution, with current sender/recipient/owner checks and tool reauthorization. Production channels remain unactivated. The complete template upgrade remains unaccepted: keep the pull request in draft and do not deploy.
 
 ## Delivered caller changes
 
@@ -9,7 +9,7 @@ Routing and vendor-bill review now use native Agents services. The Feishu/IM con
 | `aiEntryService.route`                 | Old employee model selection, structured/text guessing | Official structured generation, same authorized row audience and keyword fallback, 30-second total deadline, original caller AuthorizationContext                    |
 | `payroll.assistant.billReview`         | Old employee tool reply; reply text could become notes | Native background conversation with only the existing reconciliation and note tools; validated structured summary is an execution result, never guessed text to save |
 | Vendor-bill task record                | Old conversation ID on success                         | Native conversation ID in the same existing task field on success; no new map, table or migration                                                                    |
-| Feishu/IM reply, session map and cards | Closed compatibility path                              | Unchanged pending the card proposal below; sender binding, per-user/provider/route in-memory session map and signed callback remain retained                         |
+| Feishu/IM reply, session map and cards | Closed compatibility path                              | Native realtime sessions, existing per-user/provider/route memory map, server-bound native approval cards and the existing signed callback                           |
 
 The retained `vendorBill.aiEmployee` setting still opts into review but no longer selects an old employee/model. Official model services supply the model. An unset opt-in continues to notify without generating notes. No configuration or transcript is migrated.
 
@@ -19,7 +19,7 @@ Billing tools retain their existing ALLOW semantics; there is no human approval 
 
 After generation, the task refreshes its owner's authorization before reading/saving notes. Missing configuration, invalid output and immediate provider failure retain the existing rule fallback. If a tool already saved notes before a timeout/cancellation, the task keeps them instead of writing a second fallback note. Withdrawn access also blocks the fallback. Existing event deduplication prevents a repeated upload trigger from starting another model or writing another note.
 
-The old text-route parser remains a historical helper for existing isolated compatibility tests; production routing no longer invokes it or `fromText`. The only production `createAIRunner` binding is the retained IM reply channel. The old runtime/history, Knowledge and channel consumers still prevent deletion of their shared modules/dependencies.
+The old text-route parser remains a historical helper for existing isolated compatibility tests; production routing no longer invokes it or `fromText`. The IM channel no longer binds `createAIRunner`; no production factory call remains. Old runtime/history, Knowledge and legacy-tool consumers still prevent deletion of their shared modules/dependencies.
 
 ## Verification and limits
 
@@ -29,7 +29,7 @@ The old text-route parser remains a historical helper for existing isolated comp
 - Direct restricted bill entry rejects before model probing or storage. Raw native read/write tools reject restricted credentials before either business method; a different bill argument also calls neither method. These admitted rejected tool turns still persist native errors and continue the model.
 - Related four-file selection: **81 passed / 1 failed**; native composition has **65 passing cases**, including the prior 47 chat/learning/settings/scope/deadline cases. The only failure remains the active notification-management page assertion previously confirmed on older heads.
 - Existing vendor-bill upload/reconciliation/export/permission behavior passes its filtered payroll case (1 passed / 25 filtered out). Retained card/transport suites have 22 passing cases; these exercise retained behavior only and are not evidence of native card cutover. The final five-case ownership/tool selection also passes (5 passed / 60 filtered out).
-- Unverified: real Feishu transport, native IM/card approval, external providers, production HR/Jobs/PostgreSQL, all scheduling chains, installed-database checksum/backup recovery and the incomplete full template merge. Client rendering, install, full build and browser screenshots were not repeated for this server-only change.
+- The counts above describe the preceding routing/bill delivery. Native IM/card validation and current combined checks are recorded below. Unverified: real Feishu tenant, external providers, production HR/Jobs/PostgreSQL, all scheduling chains, installed-database checksum/backup recovery and the incomplete full template merge. Install/full build/full application browser acceptance were not repeated in this server adapter unit.
 
 ## Observed complete-operation costs
 
@@ -56,25 +56,63 @@ Counts exclude setup/assertions. They include native persistence and existing au
 
 The bill success uses three model requests: read-tool proposal, save-tool proposal and final structured result. Its tools do not require an approval continuation. Duplicate trigger's insert is the existing skipped-run audit, not a bill write. The revocation scenario includes the controlled permission-assignment removal inside its measurement; that DELETE is not performed by review itself. Timeout/cancellation reads and writes include native terminal persistence; a saved note is not rolled back or replayed. A later filtered ownership/tool capture has different cache/notification boundaries (for example invalid bill 178 SELECT instead of 205); it is not a performance improvement. Separate captures are not added together. Native task failures still may lack a task-side conversation ID even though the native failed session is persisted; this existing tracing boundary is unchanged.
 
-## Pending native IM card binding — proposal only
+## Delivered native IM sessions and approval cards
 
-Recommendation: reuse `imCards`, its signed callback, recipient binding and deduplication. Add one native approval card kind instead of making the historical profile-change card submit the business request outside the native approval. Without a durable binding, a callback cannot identify the exact native approval after a restart and a direct business submit can bypass native execution history.
+The approved minimal mapping is implemented in existing card payloads. No new tables, columns, migrations, persistent channel directory or authorization policy are introduced. Historical business cards keep their handlers and data.
 
-- **Change:** store `{ sessionId, messageId, executionId, approvalId }` plus safe display in the existing server-owned card payload; use the existing recipient/provider fields, native tuple dedupe key and `refId` for the session. No table/column migration or old-card conversion. Existing legacy and business-approval cards keep their original handlers. The native profile tool currently records source `assistant`, whereas the historical card records `feishuCard`; a trusted channel binding must preserve that audit source through the native business adapter, never through model arguments.
-- **Callback:** keep the same signed `{ cardId, button }` ingress. The new kind loads the stored binding, requires the native session owner as recipient and resolves that bound recipient's current authorization, rejects unsupported restricted credentials and calls official native `approve`. Both Approve and Deny continue that exact execution; business tools reauthorize at execution. Model/browser input never supplies authority or approval identifiers.
-- **Conversation:** replace the existing in-memory per-user/provider/route map's old IDs with native IDs. Restore through the official owner check; consume saved native messages/results without resending input. Keep the existing restart-starts-a-new-chat boundary, message dedupe and current routing labels. Waiting approval keeps its bound conversation and offers its card/app link; it is not a 120-second model stall. No new persistent channel-session directory, claim, retry or recovery service.
-- **Cost:** reuse one existing card insert and send per newly waiting approval, with added payload bytes; callback incurs existing binding/card reads and native approval persistence/model continuation. No application poll or runner claim. Measure the full combination before cutover rather than estimating native/HR SQL as zero.
-- **Decision needed:** the new persisted card-to-native-approval mapping and card-kind behavior are an application protocol difference. This portion is not implemented. Native generic chat approvals and historical signed business-card tests do not prove this new channel combination.
-- **Left out:** production channel activation, external configuration, Knowledge retrieval, old transcript migration, new authorization policies, retry/lease/lock changes and cross-process session restoration.
+- A native waiting profile-change tool produces one card with the four IDs from official assistant/execution metadata and masked display. Neither the callback nor model input supplies those IDs. The tuple-based hashed dedupe key includes provider, recipient and all four IDs.
+- The callback retains its signature, timestamp, `cardId/button`, recipient and event deduplication checks. A native card additionally requires its original external addressee to remain bound in both directions to the current user. Restore checks native ownership and saved channel origin. The exact pending tuple is matched before official atomic `approve`, which also checks waiting state and expiry. Business tools resolve current authorization and current binding again.
+- An approved profile tool calls the existing HR request service with trusted `feishuCard` source. It creates one pending HR-review request, never changes the employee record. Source identity comes from an internal server context, not tool parameters. In-app submissions and historical cards retain their existing source and behavior.
+- Accepted decisions remain accepted if the following model turn, send or card update fails; callbacks cannot replay the business tool. This keeps existing at-most-once processing semantics; no automatic redelivery/recovery has been added.
+- The existing user/provider/route memory map holds native IDs. Restore reads native history without resending input. Referring followups reuse the conversation; while waiting they return the same card without adding a user turn. A fresh channel instance can restore a pending card from payload. New messages after a restart still start a new conversation.
+- Creation alone supplies trusted business context. Adding that context on restore would append a new user message after the SDK approval response and prevent continuation; actual composition tests caught this and the adapter now omits it on restore/approval.
+- Live model responses have a 120-second cancellation budget and awaited abort/finalization. The timer is cleared when the response closes for approval; waiting for a person follows official approval expiry. Expired/stopped cards are refused by native state; the historical application card can remain visually open. No extra expiry cleanup or recovery design is introduced.
+- Native services are resolved lazily by the HR channel to respect plugin boot ordering. Old standalone HR suites initially exposed shutdown hook timeouts with eager resolution; the lazy binding removes that lifecycle-order issue without changing runtime lifecycle implementation.
+
+### Verified behavior and boundaries
+
+- Native composition: **83 passed**, including all prior 65 cases. The added matrix covers approve/reject, simultaneous and repeated callback IDs, all four incorrect IDs, wrong user/rebinding, revoked use, expiry, stopped execution, failed continuation, restart restore, restricted entry, masking/read/followup/pay routing and live-stream timeout.
+- Approve/reject traverse the real signed HTTP callback. Missing signatures and stale timestamps are refused. A 25-hour Date shift tests official expiry; a 300 ms response budget tests actual HTTP stream closure and native idle/cancelled state. No multi-minute CI wait or production scheduler runs.
+- The actual Feishu transport runs against a controlled local message API with production-equivalent external-message-ID SQL. One card is inserted/sent, the ID is written back, approval writes one HR request, then one text and one card PATCH are emitted. No tenant credentials are read and no real user receives a message.
+- The final six-file related selection: **122 passed / 1 failed**, solely the retained notification-management assertion. The native file passes all 83 cases. The isolated attendance after-turn hook passes (part of a 10-case lifecycle-order selection); its response facade tests the business hook only, not native protocol acceptance. Older fake-runner channel tests were replaced by the real native cases; historical card/transport behavior remains exercised.
+- A separate component test renders the actual English backend card view through the existing mock card component and verifies Reject needs no business rejection comment. The attached English screenshot is this controlled component rendering, not a full application or real Feishu screenshot. No client production source changed.
+- External Feishu/model interoperation, production HR/Jobs/PostgreSQL and persistence-outage recovery remain unverified. Knowledge retrieval/embeddings and HR-space authorization remain a separate AI integration; the IM prompt explicitly directs unsupported tools to NocoHR. Legacy history remains readable; no configuration/transcript migration occurs.
+
+### IM costs from complete, separate measurements
+
+Counts include existing authorization, native persistence and business work, but exclude fixture setup/assertions. Query counts are attempted statements: a duplicate-event INSERT fails its unique constraint and creates no row. The table below is from the final combined selection (83 native cases); caches/notification timing can change reads. No counts from separate operations are summed into a fixed budget.
+
+| Operation                                                  | Models | SELECT | INSERT attempts | UPDATE | Transactions | Card/text/PATCH sends |
+| ---------------------------------------------------------- | -----: | -----: | --------------: | -----: | -----------: | --------------------- |
+| Propose profile change, route included (cold approve case) |      2 |    183 |               8 |     10 |            7 | 1 / 0 / 0             |
+| Approve via signed callback, includes actual HR write      |      1 |    157 |               6 |     11 |            6 | 0 / 1 / 1             |
+| Reject via signed callback                                 |      1 |     77 |               1 |      7 |            2 | 0 / 1 / 1             |
+| Duplicate incoming/callback ID, each                       |      0 |      0 |        1 failed |      0 |            0 | 0 / 0 / 0             |
+| Different callback ID after handled                        |      0 |      9 |               1 |      0 |            0 | 0 / 0 / 0             |
+| Followup while awaiting approval                           |      0 |     41 |               1 |      0 |            0 | 0 / 0 / 0             |
+| Controlled real Feishu adapter: propose/deliver            |      2 |    158 |               8 |     11 |            7 | 1 / 0 / 0             |
+| Same adapter: approval/continuation/HR write               |      1 |    158 |               6 |     11 |            6 | 0 / 1 / 1             |
+| Continuation model failure after approved HR write         |      1 |    157 |               6 |     11 |            6 | 0 / 0 / 1             |
+| Live-response timeout, creation excluded                   |      1 |     35 |               2 |      4 |            2 | 0 / 0 / 0             |
+| Unsupported restricted IM entry                            |      0 |      0 |               0 |      0 |            0 | 0 / 0 / 0             |
+
+All listed branches issue no DELETE. A revoked callback used zero models, 18 SELECTs and one deduplication INSERT; a rebound/wrong user used two SELECTs and one INSERT. An expired callback used zero models, 42 SELECTs, one INSERT and one attempted UPDATE, with one transaction begun and none committed. These rejection costs are independent of initial card creation. The timeout-only capture had 33 SELECTs versus 35 in the combined run; writes are unchanged, so this is not an optimization claim. Table-level captures in the delivery attachment separately attribute card storage, deduplication, native storage and business requests:
+
+- Propose: `imCards` has one INSERT and two SELECTs; deduplication has one INSERT. Native conversations have 21 SELECTs, two INSERTs and ten UPDATEs; messages have eight SELECTs and four INSERTs. No business request is written. The controlled real transport adds one card UPDATE for its external message ID.
+- Approve: card storage has three SELECTs and one UPDATE; deduplication has one INSERT. Native conversations have 12 SELECTs/four UPDATEs and messages six SELECTs/two UPDATEs. The HR request table has one SELECT and one INSERT; other HR/audit/authorization work is included in the overall total rather than omitted. Employee data is read, not changed.
+- Reject has the same native/card-state work, one callback-event INSERT and no HR request. Duplicate event IDs attempt one event INSERT only; a fresh late callback ID writes its own event but cannot repeat native approval or HR work. Failed sends retain the existing at-most-once delivery boundary.
+
+Prior routing/bill costs above remain separate historical captures. Native failure sessions can still lack a task-side conversation ID; notification failure and this existing tracing boundary are retained. Production activation, Knowledge, Workflow, installed-database checks/backup restore and full template reconciliation remain separate gates.
 
 ## Reproduce
 
 ```bash
 pnpm exec vitest run tests/logic/native-ai.test.ts tests/logic/assistant-model-business.test.ts tests/logic/plugin-page-authz.test.ts tests/logic/ai-entry-route-text.test.ts --disableConsoleIntercept
 pnpm exec vitest run tests/logic/v2-payroll.test.ts -t 'V2-06 vendor bill' --disableConsoleIntercept
-pnpm exec vitest run tests/logic/v1-feishu-cards.test.ts tests/logic/feishu-bot.test.ts --disableConsoleIntercept
+pnpm exec vitest run tests/logic/v1-feishu-cards.test.ts tests/logic/feishu-bot.test.ts tests/components/im-cards.test.tsx --disableConsoleIntercept
+pnpm exec vitest run tests/logic/v2-attendance-feishu.test.ts -t 'day-5 leave drafted' --disableConsoleIntercept
 pnpm exec tsc -p tsconfig.server.json --noEmit
 pnpm exec vitest run tests/logic/agents-md.test.ts
 ```
 
-The first command retains the known failing notification assertion. For only new native cases, filter `native-ai.test.ts` with `production native|scoped vendor-bill|raw native bill`. All 138 historical migration/seed sources, application manifest/lock, fixed template `.76` / Skills `.44`, compatibility/process defaults, preflight and source marker `.54` stay intact.
+The first command retains the known failing notification assertion. For only the new IM cases, filter `native-ai.test.ts` with `native IM|restricted IM|native card delivery`. The complete native file is the definitive protocol regression set. All 138 historical migration/seed sources, application manifest/lock, fixed template `.76` / Skills `.44`, compatibility/process defaults, preflight and source marker `.54` stay intact.

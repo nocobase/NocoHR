@@ -708,6 +708,14 @@ const zhCN: AppServerResource = {
         cancelled: '已撤回',
       },
     },
+    nativeApproval: {
+      title: '确认助手操作',
+      sent: '请在审批卡片上核对并确认变更。',
+      unavailable: '该审批已不可用或你已无权操作，请在 NocoHR 查看。',
+      recorded: '已记录你的决定，请在会话中查看结果。',
+      approved: '已批准，助手已继续会话。',
+      rejected: '已拒绝，助手已继续会话。',
+    },
     profileChange: {
       title: '信息修改申请',
       submit: '提交',
