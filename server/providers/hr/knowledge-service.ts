@@ -661,8 +661,7 @@ export function createKnowledgeService(
       // V4-13: AI drafts wait in the 待审核 tab and translations in 译文审核.
       rows = rows.filter(
         (row) =>
-          !row.translationOfId &&
-          (row.reviewStatus ?? 'confirmed') !== 'draft',
+          !row.translationOfId && (row.reviewStatus ?? 'confirmed') !== 'draft',
       );
       if (filters.competencyId) {
         const tagged = await database
@@ -1560,7 +1559,10 @@ export function createKnowledgeService(
       const rows = await database
         .repository('kbDocuments')
         .withPolicy(policyOf(policies, 'kbDocuments'))
-        .findMany({ filter: { active: true } });
+        .findMany({
+          filter: { active: true },
+          select: (select) => select.fields('id'),
+        });
       return new Set(
         rows.map((row) => String((row as Record<string, unknown>).id)),
       );

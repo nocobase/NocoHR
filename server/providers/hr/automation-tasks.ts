@@ -67,6 +67,7 @@ import { json } from './platform.js';
 import { addDays, HrError, newId, str } from './shared.js';
 import { driveManagerToken } from '@nocobase/app-server/drive';
 import {
+  aiEntryServiceToken,
   certificationServiceToken,
   checklistServiceToken,
   complianceServiceToken,
@@ -1450,6 +1451,8 @@ export function createAutomationTasks(
     platform,
     knowledge,
     structured,
+    questionScope: () =>
+      container.resolve(aiEntryServiceToken).scopeFor('knowledgeAssistant'),
     hrRecipients: () =>
       container.resolve(hrCoreServiceToken).hrAdministrators(),
   });

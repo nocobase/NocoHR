@@ -1,3 +1,4 @@
+import { createConflictCheck } from '../../server/providers/hr/knowledge-conflicts.js';
 import { writeFileSync } from 'node:fs';
 import { signCallback } from '../helpers/callback-signature.js';
 import { createFeishuTransport } from '../../server/providers/hr/feishu/transport.js';
@@ -56,6 +57,16 @@ import { hrCoreServiceToken } from '../../server/providers/hr/tokens.js';
 import { z } from 'zod';
 import { createStandaloneServer } from '../../server/standalone.js';
 import { scopeForUser } from '../../server/providers/hr/authorize.js';
+import {
+  kbDocumentResource,
+  knowledgeAssistantResource,
+  VISIBLE_DOCUMENTS_SCOPE,
+} from '../../server/providers/hr/learning-resources.js';
+import {
+  knowledgeServiceToken,
+  examSettingsToken,
+  certificationServiceToken,
+} from '../../server/providers/hr/tokens.js';
 import { generateLearningPlan } from '../../server/providers/native-ai/learning-plan.js';
 
 // Historical application seeds use Node's source loader, outside Vitest transforms.
@@ -1089,6 +1100,479 @@ describe('native AI application composition', () => {
     expect(payload).not.toContain('synthetic-key');
     expect(payload).toContain('apiKeySet');
   });
+
+  it('refuses restricted conflict entry before identity rebuilding or document reads', async () => {
+    const container = app.application.container;
+    const authorization = container.resolve(authorizationToken);
+    const restricted = authorization.for({
+      ...actor.authorization.identity,
+      keyScope: {
+        keyId: 'controlled-conflict',
+        allows: () => true,
+        objects: () => [],
+        permissions: null,
+      },
+    });
+    const subjects = vi.spyOn(authorization.subjects, 'resolveFor');
+    const questionScope = vi.fn(async () => ({ docNos: [], categories: [] }));
+    const structured = vi.fn(async () => {
+      throw new Error('Must not generate');
+    });
+    const check = createConflictCheck({
+      platform: container.resolve(platformToken),
+      knowledge: () => container.resolve(knowledgeServiceToken),
+      questionScope,
+      structured,
+      hrRecipients: async () => [],
+    });
+    try {
+      await expect(
+        cost('conflict-restricted-entry', () =>
+          check(
+            {
+              runId: 'restricted-conflict',
+              trigger: 'manual',
+              owner: { userId: actor.user.id, authz: restricted },
+              params: {},
+              summarize() {},
+              reference() {},
+              usedConversation() {},
+              markFallback() {},
+              async recordItems() {},
+            },
+            'not-read',
+          ),
+        ),
+      ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+      expect(subjects).not.toHaveBeenCalled();
+      expect(questionScope).not.toHaveBeenCalled();
+      expect(structured).not.toHaveBeenCalled();
+    } finally {
+      subjects.mockRestore();
+    }
+  });
+  it.each([
+    'owner',
+    'ancestor',
+    'position',
+    'qualification',
+    'target-private',
+    'candidate-private',
+    'use-only',
+    'view-only',
+    'use-narrow',
+    'view-narrow',
+    'revoked-use',
+    'revoked-view',
+    'revoked-after-model',
+    'no-candidates',
+    'draft',
+    'translation',
+    'superseded',
+    'source-excluded',
+  ] as const)(
+    'authorizes the production conflict model input: %s',
+    async (mode) => {
+      const container = app.application.container;
+      const authz = container.resolve(authorizationToken);
+      const suffix = 'conflict-' + mode;
+      const user = await container.resolve(userManagementServiceToken).create({
+        name: 'Controlled conflict owner',
+        username: suffix.replaceAll('-', '_'),
+        email: suffix + '@example.invalid',
+        password: randomBytes(24).toString('hex'),
+      });
+      const stamp = { createdAt: new Date(), updatedAt: new Date() };
+      await app.connection.repository('departments').createMany({
+        values: [
+          {
+            id: suffix + '-parent',
+            title: 'Controlled parent',
+            active: true,
+            sortOrder: 0,
+            ...stamp,
+          },
+          {
+            id: suffix + '-child',
+            title: 'Controlled child',
+            parentId: suffix + '-parent',
+            active: true,
+            sortOrder: 0,
+            ...stamp,
+          },
+        ],
+      });
+      await app.connection.repository('jobFamilies').createOne({
+        values: {
+          id: suffix,
+          code: suffix,
+          title: suffix,
+          active: true,
+          sortOrder: 0,
+          ...stamp,
+        },
+      });
+      await app.connection.repository('positions').createOne({
+        values: {
+          id: suffix,
+          code: suffix,
+          title: suffix,
+          jobFamilyId: suffix,
+          active: true,
+          sortOrder: 0,
+          isKey: false,
+          ...stamp,
+        },
+      });
+      await app.connection.repository('employees').createOne({
+        values: {
+          id: suffix,
+          employeeNo: suffix,
+          name: 'Controlled conflict owner',
+          userId: user.id,
+          departmentId: suffix + '-child',
+          positionId: suffix,
+          status: 'active',
+          employmentType: 'fullTime',
+          syncLocked: false,
+          ...stamp,
+        },
+      });
+      const rootCtx = { userId: actor.user.id, authz: actor.authorization };
+      const examSettings = container.resolve(examSettingsToken);
+      let priorLicensed:
+        Awaited<ReturnType<typeof examSettings.get>> | undefined;
+      if (mode === 'qualification') {
+        priorLicensed = await examSettings.get(rootCtx);
+        await examSettings.update(rootCtx, 'licensedOperation', {
+          revision: priorLicensed.licensedOperation.revision,
+          value: { enabled: true },
+        });
+        await app.connection.repository('certifications').createOne({
+          values: {
+            id: suffix,
+            code: suffix,
+            title: 'Controlled knowledge qualification',
+            active: true,
+            ...stamp,
+          },
+        });
+        await app.connection.repository('employeeCertificates').createOne({
+          values: {
+            id: suffix,
+            employeeId: suffix,
+            certificationId: suffix,
+            certificateNo: suffix,
+            issuedAt: '2026-01-01',
+            status: 'valid',
+            source: 'internal',
+            ...stamp,
+          },
+        });
+        expect(
+          await container
+            .resolve(certificationServiceToken)
+            .heldCertificationIds(user.id),
+        ).toContain(suffix);
+      }
+      const useKey = suffix + '-use',
+        viewKey = suffix + '-view';
+      await authz.permissionSets.create({
+        key: suffix + '-configure',
+        grants: [
+          knowledgeAssistantResource.reference().grant({
+            configure: {
+              aiAutomationSettings: 'allRecords',
+              aiTaskRuns: 'allRecords',
+              aiTaskRunItems: 'allRecords',
+            },
+          }),
+        ],
+      });
+      await authz.permissionSets.assign({
+        subject: { type: 'user', id: user.id },
+        permissionSet: suffix + '-configure',
+      });
+      await authz.permissionSets.create({
+        key: useKey,
+        grants: [
+          knowledgeAssistantResource.reference().grant({
+            use: {
+              kbDocuments:
+                mode === 'view-narrow' ? 'allRecords' : VISIBLE_DOCUMENTS_SCOPE,
+            },
+          }),
+        ],
+      });
+      await authz.permissionSets.create({
+        key: viewKey,
+        grants: [
+          kbDocumentResource.reference().grant({
+            view: {
+              kbDocuments:
+                mode === 'use-narrow' ? 'allRecords' : VISIBLE_DOCUMENTS_SCOPE,
+            },
+          }),
+        ],
+      });
+      const subject =
+        mode === 'qualification'
+          ? { type: 'hr.certification', id: suffix }
+          : { type: 'user', id: user.id };
+      const use =
+        mode !== 'view-only'
+          ? await authz.permissionSets.assign({
+              subject,
+              permissionSet: useKey,
+            })
+          : undefined;
+      const view =
+        mode !== 'use-only'
+          ? await authz.permissionSets.assign({
+              subject,
+              permissionSet: viewKey,
+            })
+          : undefined;
+      const target = suffix + '-target',
+        other = suffix + '-other',
+        secret = suffix + '-secret';
+      const permitted = ![
+        'target-private',
+        'candidate-private',
+        'use-only',
+        'view-only',
+        'use-narrow',
+        'view-narrow',
+        'revoked-use',
+        'revoked-view',
+        'no-candidates',
+        'draft',
+        'translation',
+        'superseded',
+        'source-excluded',
+      ].includes(mode);
+      const shared = mode === 'ancestor' || mode === 'position';
+      const ownTarget = mode !== 'target-private' && !shared;
+      const ownOther =
+        ![
+          'candidate-private',
+          'use-narrow',
+          'view-narrow',
+          'no-candidates',
+        ].includes(mode) && !shared;
+      for (const [id, amount, owner] of [
+        [target, 40, ownTarget],
+        [other, 50, ownOther],
+        [secret, 90, false],
+      ] as const) {
+        await app.connection.repository('kbDocuments').createOne({
+          values: {
+            id,
+            title: id,
+            docNo: id,
+            category: 'policy',
+            fileId: 'controlled-not-opened',
+            contentText:
+              '# Night allowance\n员工夜班津贴为 ' + amount + ' 元。',
+            parseStatus: 'ready',
+            visibility: 'restricted',
+            ownerUserId: owner ? user.id : actor.user.id,
+            active: true,
+            reviewStatus:
+              mode === 'draft' && id === target ? 'draft' : 'confirmed',
+            translationOfId:
+              mode === 'translation' && id === target ? other : null,
+            supersededById:
+              mode === 'superseded' && id === target ? other : null,
+            ...stamp,
+          },
+        });
+      }
+      if (shared)
+        for (const id of [target, other]) {
+          await app.connection
+            .repository(
+              mode === 'ancestor'
+                ? 'kbDocumentDepartments'
+                : 'kbDocumentPositions',
+            )
+            .createOne({
+              values: {
+                id,
+                documentId: id,
+                ...(mode === 'ancestor'
+                  ? { departmentId: suffix + '-parent' }
+                  : { positionId: suffix }),
+                ...stamp,
+              },
+            });
+        }
+      await container
+        .resolve(automationServiceToken)
+        .update(rootCtx, 'knowledgeAssistant.conflictCheck', {
+          enabled: true,
+          ownerUserId: user.id,
+        });
+      text = JSON.stringify({
+        pairs: [
+          {
+            index: 0,
+            isConflict: true,
+            description: 'Controlled authorized conflict',
+          },
+        ],
+      });
+      const entry = container.resolve(aiEntryServiceToken);
+      const priorEntry = await entry.get(rootCtx);
+      await entry.update(rootCtx, {
+        revision: priorEntry.revision,
+        value: {
+          ...priorEntry.value,
+          knowledgeScopes: {
+            ...priorEntry.value.knowledgeScopes,
+            knowledgeAssistant: {
+              docNos:
+                mode === 'source-excluded'
+                  ? [other, secret]
+                  : [target, other, secret],
+              categories: [],
+            },
+          },
+        },
+      });
+      const originalScope = entry.scopeFor.bind(entry);
+      let scopeCalls = 0;
+      const scope = vi
+        .spyOn(entry, 'scopeFor')
+        .mockImplementation(async (employee) => {
+          if (
+            employee === 'knowledgeAssistant' &&
+            ++scopeCalls === 2 &&
+            ['revoked-use', 'revoked-view'].includes(mode)
+          )
+            await authz.permissionSets.revoke(
+              mode === 'revoked-use' ? use!.id : view!.id,
+            );
+          return originalScope(employee);
+        });
+      if (mode === 'revoked-after-model')
+        beforeModelReply = async () => {
+          beforeModelReply = undefined;
+          await authz.permissionSets.revoke(view!.id);
+        };
+      const before = calls,
+        requestStart = requests.length;
+      const fullTextReads: string[] = [];
+      const client = await app.connection.client<{
+        on(
+          event: string,
+          cb: (value: unknown, q: { sql: string }) => void,
+        ): void;
+        removeListener(
+          event: string,
+          cb: (value: unknown, q: { sql: string }) => void,
+        ): void;
+      }>();
+      const observe = (value: unknown, q: { sql: string }) => {
+        if (/select/i.test(q.sql) && /kb_documents/i.test(q.sql)) {
+          const rows = Array.isArray(value) ? value : [value];
+          for (const row of rows)
+            if (
+              row &&
+              typeof row === 'object' &&
+              ('contentText' in row || 'content_text' in row)
+            )
+              fullTextReads.push(String((row as { id: unknown }).id));
+        }
+      };
+      client.on('query-response', observe);
+      try {
+        const result = await cost('conflict-production-' + mode, () =>
+          container
+            .resolve(automationTasksToken)
+            .onDocumentReadyForConflicts(target),
+        );
+        const sent = JSON.stringify(requests.slice(requestStart));
+        process.stdout.write(
+          'CONFLICT_INPUT ' +
+            JSON.stringify({
+              mode,
+              fullTextReads,
+              modelRequests: calls - before,
+              sent40: sent.includes('40 元'),
+              sent50: sent.includes('50 元'),
+              sent90: sent.includes('90 元'),
+            }) +
+            '\n',
+        );
+        expect(fullTextReads).not.toContain(secret);
+        const denied = [
+          'use-only',
+          'view-only',
+          'revoked-use',
+          'revoked-view',
+          'revoked-after-model',
+        ].includes(mode);
+        expect(result.status).toBe(
+          denied ? 'failed' : permitted ? 'succeeded' : 'skipped',
+        );
+        if (
+          [
+            'target-private',
+            'draft',
+            'translation',
+            'superseded',
+            'source-excluded',
+          ].includes(mode)
+        )
+          expect(fullTextReads).not.toContain(target);
+        if (
+          [
+            'candidate-private',
+            'use-narrow',
+            'view-narrow',
+            'no-candidates',
+          ].includes(mode)
+        )
+          expect(fullTextReads).not.toContain(other);
+        expect(calls - before).toBe(permitted ? 1 : 0);
+        expect(sent).not.toContain('90 元');
+        if (!permitted) expect(requests.slice(requestStart)).toHaveLength(0);
+        const recorded = await app.connection
+          .repository('documentConflicts')
+          .findMany({ filter: { documentId: target } });
+        expect(recorded).toHaveLength(
+          permitted && mode !== 'revoked-after-model' ? 1 : 0,
+        );
+        if (permitted && mode !== 'revoked-after-model') {
+          expect(result.status).toBe('succeeded');
+          expect(sent).toContain('40 元');
+          expect(sent).toContain('50 元');
+          expect(recorded[0]).toMatchObject({
+            otherDocumentId: other,
+            status: 'open',
+            source: 'ai',
+          });
+        }
+      } finally {
+        beforeModelReply = undefined;
+        client.removeListener('query-response', observe);
+        scope.mockRestore();
+        const currentEntry = await entry.get(rootCtx);
+        await entry.update(rootCtx, {
+          revision: currentEntry.revision,
+          value: priorEntry.value,
+        });
+        if (priorLicensed) {
+          const now = await examSettings.get(rootCtx);
+          await examSettings.update(rootCtx, 'licensedOperation', {
+            revision: now.licensedOperation.revision,
+            value: priorLicensed.licensedOperation.value,
+          });
+        }
+      }
+    },
+  );
 
   it.each([
     'valid',
