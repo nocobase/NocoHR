@@ -184,7 +184,7 @@ it('shows a download fallback after an image preview fails without retrying its 
 
 function useShortOfficePreviewTimeout(): {
   readonly timeoutId: number | undefined;
-  readonly advance: () => Promise<void>;
+  readonly advance: (milliseconds?: number) => Promise<void>;
 } {
   vi.useFakeTimers();
   const fakeSetTimeout = window.setTimeout.bind(window);
@@ -204,7 +204,8 @@ function useShortOfficePreviewTimeout(): {
     get timeoutId() {
       return timeoutId;
     },
-    advance: () => act(async () => vi.advanceTimersByTimeAsync(5)),
+    advance: (milliseconds = 5) =>
+      act(async () => vi.advanceTimersByTimeAsync(milliseconds)),
   };
 }
 
@@ -285,4 +286,99 @@ it('aborts pending OOXML work and clears the preview deadline on unmount', () =>
   expect(requestSignal?.aborted).toBe(true);
   expect(clearTimeout).toHaveBeenCalledWith(timer.timeoutId);
   expect(viewer.destroy).not.toHaveBeenCalled();
+});
+
+it('keeps one deadline across fetch and render and ignores late render completion', async () => {
+  const timer = useShortOfficePreviewTimeout();
+  let finishFetch!: (response: Response) => void;
+  let finishRender!: () => void;
+  let requestSignal: AbortSignal | undefined;
+  const pendingFetch = new Promise<Response>((resolve) => {
+    finishFetch = resolve;
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>().mockImplementation((_input, init) => {
+      requestSignal = init?.signal as AbortSignal;
+      return pendingFetch;
+    }),
+  );
+  viewer.load.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        finishRender = resolve;
+      }),
+  );
+  const { unmount } = render(
+    <FilePreviewDialog files={[file('docx')]} open onOpenChange={vi.fn()} />,
+  );
+
+  await timer.advance(3);
+  finishFetch(new Response(new Uint8Array([1, 2, 3])));
+  await act(async () => {
+    for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+  });
+  expect(viewer.load).toHaveBeenCalledOnce();
+
+  await timer.advance(2);
+
+  expect(requestSignal?.aborted).toBe(true);
+  expect(viewer.destroy).toHaveBeenCalledOnce();
+  expect(screen.getByRole('alert')).toHaveTextContent('within 3 minutes');
+
+  await act(async () => finishRender());
+  expect(screen.getByRole('alert')).toHaveTextContent('within 3 minutes');
+  unmount();
+  expect(viewer.destroy).toHaveBeenCalledOnce();
+});
+
+it('clears the deadline after successful rendering and destroys the viewer on close', async () => {
+  const timer = useShortOfficePreviewTimeout();
+  const clearTimeout = vi.spyOn(window, 'clearTimeout');
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(new Uint8Array([1, 2, 3]))),
+  );
+  const props = { files: [file('docx')], onOpenChange: vi.fn() };
+  const { rerender } = render(<FilePreviewDialog {...props} open />);
+
+  await act(async () => {
+    for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+  });
+  expect(viewer.load).toHaveBeenCalledOnce();
+  expect(clearTimeout).toHaveBeenCalledWith(timer.timeoutId);
+
+  await timer.advance();
+
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(viewer.destroy).not.toHaveBeenCalled();
+  rerender(<FilePreviewDialog {...props} open={false} />);
+  expect(viewer.destroy).toHaveBeenCalledOnce();
+});
+
+it('does not create a PDF object URL when its request returns after close', async () => {
+  let finishFetch!: (response: Response) => void;
+  const pendingFetch = new Promise<Response>((resolve) => {
+    finishFetch = resolve;
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => pendingFetch),
+  );
+  const props = { files: [file('pdf')], onOpenChange: vi.fn() };
+  const { rerender } = render(<FilePreviewDialog {...props} open />);
+
+  rerender(<FilePreviewDialog {...props} open={false} />);
+  finishFetch(
+    new Response('%PDF-1.7', {
+      headers: { 'content-type': 'application/pdf' },
+    }),
+  );
+  await act(async () => {
+    for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
+  });
+
+  expect(viewer.createObjectURL).not.toHaveBeenCalled();
 });
