@@ -1,6 +1,12 @@
 import { resolveAppUrl, useApiClient } from '@nocobase/app-client';
 import { useTranslation } from '@nocobase/i18n/client';
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactElement,
+} from 'react';
 
 import type { LearnerCourse } from '@/components/talent/learning-types';
 import { Progress } from '@/components/ui/progress';
@@ -43,47 +49,55 @@ export function VideoLesson({
   const duration = lesson.videoSeconds ?? 0;
   const required = Math.ceil((duration * lesson.minWatchPercent) / 100);
 
-  async function report(): Promise<void> {
-    const element = videoRef.current;
-    if (!element || segmentStartRef.current === null) return;
-    const from = segmentStartRef.current;
-    const to = element.currentTime;
-    segmentStartRef.current = element.paused ? null : to;
-    if (to - from < 0.5) return;
-    try {
-      const result = await api.request<{
-        data: {
-          watchedSeconds: number;
-          maxPositionSeconds: number;
-          canComplete: boolean;
-        };
-      }>({
-        path: 'talent/learning/video-progress',
-        method: 'POST',
-        json: { courseId, lessonId: lesson.id, from, to },
-      });
-      furthestRef.current = Math.max(
-        furthestRef.current,
-        result.data.maxPositionSeconds,
-      );
-      setWatched(result.data.watchedSeconds);
-      onProgress(result.data);
-    } catch {
-      // A missed report only delays progress; the next one covers the interval again.
-    }
-  }
+  const progressRef = useRef(onProgress);
+  useEffect(() => {
+    progressRef.current = onProgress;
+  }, [onProgress]);
+
+  const report = useCallback(
+    async (element = videoRef.current): Promise<void> => {
+      if (!element || segmentStartRef.current === null) return;
+      const from = segmentStartRef.current;
+      const to = element.currentTime;
+      segmentStartRef.current = element.paused ? null : to;
+      if (to - from < 0.5) return;
+      try {
+        const result = await api.request<{
+          data: {
+            watchedSeconds: number;
+            maxPositionSeconds: number;
+            canComplete: boolean;
+          };
+        }>({
+          path: 'talent/learning/video-progress',
+          method: 'POST',
+          json: { courseId, lessonId: lesson.id, from, to },
+        });
+        furthestRef.current = Math.max(
+          furthestRef.current,
+          result.data.maxPositionSeconds,
+        );
+        setWatched(result.data.watchedSeconds);
+        progressRef.current(result.data);
+      } catch {
+        // A missed report only delays progress; the next one covers the interval again.
+      }
+    },
+    [api, courseId, lesson.id],
+  );
 
   useEffect(() => {
+    // Passive cleanup runs after React detaches the ref. Retain this lesson's
+    // element so the final watched segment is still reported on replacement.
+    const element = videoRef.current;
     const timer = window.setInterval(() => {
       if (videoRef.current && !videoRef.current.paused) void report();
     }, REPORT_EVERY_MS);
     return () => {
       window.clearInterval(timer);
-      void report();
+      void report(element);
     };
-    // `report` reads refs only; re-creating the interval on every render would reset it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lesson.id]);
+  }, [report]);
 
   return (
     <div className='space-y-3'>

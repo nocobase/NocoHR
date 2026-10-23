@@ -2,6 +2,10 @@
 
 The breadcrumb translation, native client test hosts and notification management route are upgrade fixes. They are not pre-upgrade exemptions. Current verification and the remaining source-quality findings are recorded below; independent review is still required. The PR remains draft, `.54` and all compatibility gates/preflight remain unchanged.
 
+## Client warning follow-up after `fd0f071`
+
+Seven warnings are addressed without rule suppression: stable video reporting, three profile draft row identities, explicit mailbox async feedback, practice display identity and blank-answer draft identity. The [unit record](quality-warning-unit.md) documents payload boundaries, the final-video-segment regression, costs and the two precise deferred proposals. The nine-warning table below is retained as history, not a claim that every item requires a product decision. Current lint still fails its zero-warning gate for the date clock and report row identity; shutdown acceptance remains separately blocked. Verification logs and English real-route screenshots accompany this delivery.
+
 ## Early-drain concurrency prerequisite
 
 The proposed Jobs-only tail adapter is not registered. A controlled official Scheduler/Jobs/SQLite test finds that an in-flight reconciliation can outlive executor drain and dependency cleanup (**1 control passed / 1 safety assertion failed**). [The contract record](shutdown-drain-contract.md) supplies the reproducible boundary, public lifecycle alternative, fixed-scope upgrade checks and exact seed-data/history paths. No production source or test budget changes. This precondition stops the adapter's implementation and dependent full/build/start validation; it does not close the previously confirmed mail-shutdown defect.
@@ -12,7 +16,7 @@ The cleanup started from the recorded full-lint baseline of **0 errors / 17 warn
 
 Eight warnings were removed with mechanical edits: three `useState` initializers became lazy initializers in the Settings departments and training reports pages, and five refs received the `Ref` suffix in employees, video lesson and questions. These preserve their initial values and ref identity. No list keys, effect lifetimes, error timing or clock-refresh behavior were changed to silence a warning.
 
-The remaining nine warnings need an explicit behavior decision:
+The following nine-warning list is the historical mechanical-cleanup result. Independent review found seven directly actionable client fixes; only date refresh and the additive report response are deferred for scope confirmation. See [the client follow-up](quality-warning-unit.md) for current results and precise proposals:
 
 | Count | Location and rule                                                            | Why it remains                                                                                                                         |
 | ----: | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -118,4 +122,4 @@ Persistent knowledge Q&A remains deferred. No used old environment exists; old-e
 
 ## Quality state before the mechanical cleanup
 
-The previous quality report recorded 17 lint warnings and 54 format failures. The cleanup result above supersedes those current-state counts. The earlier comparison against `2bfd8d1` remains historical source/toolchain evidence, not a claim that the old dependency graph was installed. The full-format gate is closed for the current worktree; nine behavior-sensitive lint warnings and the separate shutdown/full-acceptance gates remain open.
+The previous quality report recorded 17 lint warnings and 54 format failures. The cleanup result above supersedes those current-state counts. The earlier comparison against `2bfd8d1` remains historical source/toolchain evidence, not a claim that the old dependency graph was installed. The full-format gate is closed for the current worktree; the two deferred lint warnings and separate shutdown/full-acceptance gates remain open after the client follow-up.
