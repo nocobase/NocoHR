@@ -4,9 +4,13 @@ The fixed `.76` / Skills `.44` application installs with the frozen lock, passes
 
 ## Quality follow-up result
 
-The subsequent quality unit fixes the breadcrumb locale, missing Notification management route, native client fixture registration and recipient-specific notification waiting. Full test cases now pass **1973/1973**, but the whole command still fails: **233/234 files pass**, with `v3-profile.test.ts:347` afterAll timing out. Its standalone 23 cases and cleanup pass; organization sync passes in the final full run. This remains an unresolved shutdown observation, not an accepted baseline failure.
+The quality unit fixes the breadcrumb locale, missing Notification management route, native client fixture registration and recipient-specific notification waiting. Its production changes passed independent review; the earlier **1973 passing cases / one profile afterAll timeout** remains historical evidence.
 
-Updated types, full build and strict source/compiled Notification page checks pass. Lint is **0 errors / 17 warnings**, formatting **54 unchanged pre-upgrade files**; both commands still fail their gates. [Quality closure](quality-closure.md) records true `2bfd8d1` source comparisons, all three full-run outcomes, exact remaining actions and page costs. The older matrix below is retained as evidence from `6350d42`, not the current result.
+The subsequent fixture-only unit stops unrelated official Scheduler calendar work in two ordinary API fixtures, preserving one-off Jobs, all **479** existing assertions and dedicated Scheduler coverage. The target combination passes **112 cases**. Two predetermined full runs finish: first **234 files / 1973 cases passed**, exit 0; second **231 files passed / 3 failed, 1972 cases passed / 1 failed**, exit 1. Both changed fixtures close normally and finish all local writeback requests with no pending requests/connections.
+
+**Acceptance remains blocked.** In the second run, training acceptance and authorization-review API fixtures time out in application close; same-window diagnostics show Scheduler still shutting down through 30005 ms, without a terminal marker. Its internal waiting operation is unproven. An unchanged process-presentation callback assertion also fails in that run. There is no third full run or change to production shutdown, timeout or retry behavior. [Quality closure](quality-closure.md) records exact locations, phases, commands and boundaries; no original failure is relabeled passing.
+
+Updated types, full build and strict source/compiled Notification page checks from the production quality unit remain reusable: this subsequent unit changes only tests and records. Changed-code lint/format, scoped diagnostic-helper TypeScript and record links pass. Full lint remains **0 errors / 17 warnings**, formatting **54 unchanged pre-upgrade files**; both gates remain failed pending their separately requested cleanup. The older matrix below is retained as evidence from `6350d42`, not the current result.
 
 ## Scope and ownership
 
@@ -56,7 +60,7 @@ An initial synthetic compiled configuration omitted the required company name an
 
 ## Remaining applicable closure
 
-- Independently review this evidence, full-file/test ownership and the new test-only code/copy assertions. Use the quality follow-up for current test results; resolve or explicitly disposition its individually evidenced pre-upgrade warnings/format gates before final acceptance. Intermediate-version reproduction is not an exemption. Marker `.54`, disabled gates and preflight remain unchanged pending closure.
+- Independently review the fixture isolation and both full-run close records. Resolve the two remaining application-close waits and process-presentation callback assertion, and complete the separately requested residual warning/format cleanup before final acceptance. Use the quality follow-up for current results; source ownership is not an exemption. Intermediate-version reproduction is not an exemption. Marker `.54`, disabled gates and preflight remain unchanged pending closure.
 - Persistent knowledge Q&A remains deferred by the staged product boundary. Real external model/provider validation is required before activating that provider. PostgreSQL/pgvector and multi-instance Jobs need validation when those deployment forms are chosen. SQLite single-instance evidence does not cover them.
 - Fixed Agents `.18` metadata-v1 evidence is reused; recheck that contract when changing that plugin. No source/history migration or installed old-environment recovery is asserted.
 - Final acceptance, merge and deployment remain with the owner. No deployment, production-channel activation or release occurs here.

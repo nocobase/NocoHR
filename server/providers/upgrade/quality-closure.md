@@ -20,7 +20,32 @@ An independent temporary SQLite/storage instance used only synthetic seeds and n
 
 Each measured API sample is one HTTP request. Anonymous denial: 0 SQL; administrator empty list: 26 SELECT; ordinary employee denial: 33 SELECT; explicit grant: 20 SELECT; revocation: 18 SELECT. All five windows have zero INSERT/UPDATE/DELETE/transactions/model requests. Test grant/revoke, login, initialization and browser SQL are outside these windows; they are not claimed free. The page reads once on mount and once per Refresh, without polling or sending. These cold/warm samples are not a fixed budget.
 
-## Verification and remaining action
+## API fixture calendar isolation
+
+The ordinary API fixtures in `talent-acceptance.test.ts` and `v3-profile.test.ts` now stop only Scheduler's calendar executor after initialization, using `jobExecutorServiceToken.getScheduleExecutor('@nocobase/app-plugin-scheduler').shutdown()`. One-off Jobs, all existing business assertions and the dedicated Scheduler/Jobs suites remain active. Production sources, schedules, cancellation, locks, retries and timeouts are unchanged.
+
+`tests/helpers/close-diagnostics.ts` observes the original application and local writeback close operations. It logs begin/done/failed and, while waiting, a read-only provider-state snapshot every five seconds; its observer is unreferenced and cleared after completion or failure. It adds no deadline, race, cancellation or forced connection disposal. Profile diagnostics count received/finished/aborted requests and remaining request/connection IDs without logging bodies, headers, credentials or configuration. Raw stderr output retains these phases in command logs.
+
+The change is fixture isolation, not a demonstrated explanation of the earlier intermittent timeout. The independent pre-change comparison had one full run with all 1973 assertions passing but `talent-acceptance` application close timing out, and one diagnostic full run with all 234 files / 1973 assertions passing. Two slow Scheduler-provider samples completed after about 10.34 and 10.29 seconds; they did not capture the provider responsible for the original 30-second failure. The profile writeback server closed normally in the observed passing samples.
+
+The target combination passes **112 cases**. The two predetermined full runs have different outcomes:
+
+| Run    | Files                 | Cases                  | Exit | Duration       |
+| ------ | --------------------- | ---------------------- | ---- | -------------- |
+| First  | 234 passed            | 1973 passed            | 0    | 666.59 seconds |
+| Second | 231 passed / 3 failed | 1972 passed / 1 failed | 1    | 911.79 seconds |
+
+Both full runs pass the two changed fixtures, all their original assertions and their three close stages. Application close takes talent/profile **25/21 ms** in the first run and **23/24 ms** in the second; profile writeback close takes **0 ms** in both. Each profile run receives and finishes two requests, with zero aborted/pending requests or open writeback connections at completion. An AST comparison preserves all **479** original assertion chains. Changed-code lint/format, the diagnostic helper's scoped TypeScript check and record-link checks pass.
+
+The second run remains a failing acceptance result. `training-acceptance.test.ts:150` and `authorization-review-fixes.test.ts:34` exceed the existing 30-second afterAll budget. Verification-only observation of the original shutdown promise records Scheduler **shutting-down** at 5-second intervals through **30005 ms** in both applications, with no terminal marker. These are application/provider waits, not profile writeback waits. The specific internal scheduled operation is unproven; no production shutdown change is proposed from that evidence alone. The first run also records an unchanged mail-audit application's Scheduler wait completing after **20610 ms**.
+
+The second run additionally fails `process-presentation.test.tsx:108`: the error callback has not been observed when its final assertion runs, after the expected alert check. The first run passes this same unchanged test. Its cause is not established and this fixture-only unit does not modify or waive it. No third full run, retry, timeout increase or forced shutdown was added. Independent review and the residual lint/format gates remain open.
+
+The full commands inherit every test and timeout from the repository configuration, add only a temporary read-only whole-application close observer, and run sequentially with `--maxWorkers=2`. That observer is evidence tooling, not committed application code. Raw logs retain both failures and all phase snapshots. A temporary-config ESM loading error before test execution was corrected by using `.mts`; its startup logs are separate from the two actual full runs.
+
+Cost: no production endpoint, query, model call, transaction or lock is added. The test-only phase observer reads in-memory state and writes log lines. The official memory calendar executor persists its existing state during shutdown, now at fixture initialization rather than teardown; the later provider shutdown uses the same completed promise. Initialization, existing business/Jobs work, fixture authorization changes and full-suite SQL/model costs are not zero and are outside any previously measured API window. No deployment benchmark or shutdown-speed improvement is claimed.
+
+## Historical verification before fixture isolation
 
 Final full run: **234 files, 233 passed / 1 failed; all 1973 test cases passed**. The remaining suite failure is `v3-profile.test.ts:347` afterAll exceeding 30 seconds, not an assertion failure. No unhandled-error summary remains. Organization-sync's 19 cases and cleanup passed in this full run. Overall test exit is still 1.
 
@@ -33,7 +58,7 @@ Three-project `pnpm typecheck`, updated full `pnpm build`, source/compiled stric
 
 Final command results are recorded in the delivery evidence. The original `6350d42` full run (1923 passed, 47 failed, 39 errors) and organization-sync full-run cleanup timeout remain historical results; isolated success never rewrites them.
 
-Remaining warnings and formatting failures must have exact true-base source/diagnostic evidence and an explicit owner disposition or a separately scoped cleanup. No rule is disabled, assertion skipped, timeout extended or failure marked green. Independent review must cover the new logs connection and the compatibility-path type/cleanup changes. Production source changed in this unit, so the updated build and source-start evidence supplement the earlier install/restore record; drained same-path restore evidence remains reusable for unchanged storage mechanisms.
+Remaining warnings and formatting failures have true-base source/diagnostic evidence and remain subject to the separately requested cleanup; source ownership is not a quality-gate waiver. No rule is disabled, assertion skipped, timeout extended or failure marked green. Independent review must cover the new logs connection and the compatibility-path type/cleanup changes. Production source changed in this unit, so the updated build and source-start evidence supplement the earlier install/restore record; drained same-path restore evidence remains reusable for unchanged storage mechanisms.
 
 Persistent knowledge Q&A remains deferred. No used old environment exists; old-environment migration/restore is not applicable. External providers and other database/multi-instance deployment forms require their own activation checks. Final acceptance/merge/deployment and any residual-quality exemption stay with the owner.
 
@@ -50,6 +75,6 @@ The current full lint run has **0 errors / 17 warnings** and still exits 1 under
 | My mailbox                                                  | State update in effect                               | Review load/error timing before rescheduling.                                                                            |
 | Sessions                                                    | Date created during render                           | Review refresh semantics before moving the clock read.                                                                   |
 
-Nine residual lint files are byte-identical to the true baseline. The practice file has other upgrade changes but its array-key expression and diagnostic are unchanged. No warning suppression is added. No residual warning is automatically accepted: the owner must authorize the separate cleanup or explicitly accept its stated impact before closing the gate.
+Nine residual lint files are byte-identical to the true baseline. The practice file has other upgrade changes but its array-key expression and diagnostic are unchanged. No warning suppression is added. No residual warning is accepted. The separate cleanup has been requested; this fixture-only unit neither performs it nor closes that gate.
 
-Full formatting still reports **54 files**, all byte-identical to `2bfd8d1`; the same current formatter flags those exact baseline files. The delivery includes each path/hash and paired output. These are formatting-only differences in untouched business/test source, with no demonstrated runtime defect; recommend a separate formatting-only batch if a fully green gate is required. This step intentionally does not mix that unrelated batch into the upgrade fix.
+Full formatting still reports **54 files**, all byte-identical to `2bfd8d1`; the same current formatter flags those exact baseline files. The delivery includes each path/hash and paired output. These are formatting-only differences in untouched business/test source, with no demonstrated runtime defect; complete a separate formatting-only batch to close the format gate. This step intentionally does not mix that unrelated batch into the upgrade fix.
