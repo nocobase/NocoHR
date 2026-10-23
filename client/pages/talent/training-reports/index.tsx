@@ -187,8 +187,8 @@ export default function TrainingReportsPage(): ReactElement {
   });
   const [departmentId, setDepartmentId] = useState('');
   const [positionId, setPositionId] = useState('');
-  const [from, setFrom] = useState(isoDate(-364));
-  const [to, setTo] = useState(isoDate(0));
+  const [from, setFrom] = useState(() => isoDate(-364));
+  const [to, setTo] = useState(() => isoDate(0));
   const [detail, setDetail] = useState<MetricKey | null>(null);
   const report = useRemote<TrainingReport>('talent/training-report', {
     departmentId: departmentId || undefined,

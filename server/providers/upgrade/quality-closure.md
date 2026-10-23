@@ -6,6 +6,30 @@ The breadcrumb translation, native client test hosts and notification management
 
 The proposed Jobs-only tail adapter is not registered. A controlled official Scheduler/Jobs/SQLite test finds that an in-flight reconciliation can outlive executor drain and dependency cleanup (**1 control passed / 1 safety assertion failed**). [The contract record](shutdown-drain-contract.md) supplies the reproducible boundary, public lifecycle alternative, fixed-scope upgrade checks and exact seed-data/history paths. No production source or test budget changes. This precondition stops the adapter's implementation and dependent full/build/start validation; it does not close the previously confirmed mail-shutdown defect.
 
+## Mechanical quality cleanup at `bf643ff`
+
+The cleanup started from the recorded full-lint baseline of **0 errors / 17 warnings** and **54 format failures**. The complete repository format check now passes. Full lint reports **0 errors / 9 warnings** and still exits 1 because the repository script sets `--max-warnings 0`; no rules, ignores or assertions were changed.
+
+Eight warnings were removed with mechanical edits: three `useState` initializers became lazy initializers in the Settings departments and training reports pages, and five refs received the `Ref` suffix in employees, video lesson and questions. These preserve their initial values and ref identity. No list keys, effect lifetimes, error timing or clock-refresh behavior were changed to silence a warning.
+
+The remaining nine warnings need an explicit behavior decision:
+
+| Count | Location and rule                                                            | Why it remains                                                                                                                         |
+| ----: | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+|     1 | `client/pages/talent/learning/video-lesson.tsx` — `report` effect dependency | Adding the dependency changes the reporting subscription lifetime and can restart its timer; review that lifecycle before changing it. |
+|     3 | `client/pages/talent/me/profile-change-dialog.tsx` — array-index keys        | The rows have no stable identity; adding IDs would change form data/state shape.                                                       |
+|     1 | `client/pages/talent/my-mailbox/index.tsx` — state update in effect          | Moving the error update changes when the current load/error feedback appears.                                                          |
+|     1 | `client/pages/talent/practice/index.tsx` — array-index key                   | Transcript turns have no ID and currently append; inventing an identity is a behavior/data change.                                     |
+|     1 | `client/pages/talent/questions/question-dialog.tsx` — array-index key        | Answer values are positional strings and have no stable item identity.                                                                 |
+|     1 | `client/pages/talent/sessions/index.tsx` — `new Date()` during render        | Moving the clock read to state/memo changes when the displayed current date refreshes, including after midnight.                       |
+|     1 | `client/pages/talent/training-reports/index.tsx` — array-index key           | Report records have no stable ID in the current response contract.                                                                     |
+
+The 54 original format paths all pass the formatter. They include the three `database/seed-data/` helpers, which were formatted without editing their historical seed consumers. A before/after runtime export snapshot for the three helpers is byte-identical (SHA256 `9d217d4af50c129729af57af6bffdae1b1c75d51701dc6da6c3099910c0891d3`); the relevant recruiting seed test passes. All **138** historical migration/seed source hashes and all four historical seed-consumer hashes match the pre-cleanup manifests. The full per-file before/after hashes and ownership scope are in [the quality cleanup manifest](evidence/quality-cleanup-manifest.json).
+
+None of the 58 changed quality source paths belongs to the 284-path `.54 → .76` template ownership ledger; the source changes are application-owned warning cleanup and the 54 recorded formatter paths. The ledger itself remains unchanged. Three-project typecheck passes. The recruiting seed/consumer file passes **32/32** tests, and the selected exam, mail-recruiting and training seed cases pass. An initial name-filtered recruiting attempt omitted setup for its selected import case; the complete recruiting test file was then run and passed. Formatting/lint/tests perform no production requests or production writes; test-local database and synthetic fixtures are separate from production costs.
+
+This batch does not retry the shutdown probe, register the drain adapter, rerun a full build, or change dependencies, lock, compatibility gates, preflight, migration history or `.54`. The recorded close-order safety failure remains open. Full lint and current-head build/source-and-compiled startup still prevent final quality/upgrade acceptance.
+
 ## What changed
 
 - Application locale overrides supply `navigation.breadcrumbMore`. Shell tests now scope menu links to their navigation region, since breadcrumbs legitimately duplicate those links.
@@ -92,19 +116,6 @@ Remaining warnings and formatting failures have true-base source/diagnostic evid
 
 Persistent knowledge Q&A remains deferred. No used old environment exists; old-environment migration/restore is not applicable. External providers and other database/multi-instance deployment forms require their own activation checks. Final acceptance/merge/deployment and any residual-quality exemption stay with the owner.
 
-## Residual quality gates requiring a disposition
+## Quality state before the mechanical cleanup
 
-The current full lint run has **0 errors / 17 warnings** and still exits 1 under `--max-warnings 0`. The same fixed toolchain on the true `2bfd8d1` source reproduces all residual locations/rules (18 warnings there, including a ref naming issue corrected here). This is a source/toolchain comparison, not a claim of installing the old dependency graph.
-
-| Files                                                       | Residual rule / consequence                          | Recommended follow-up                                                                                                    |
-| ----------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Settings departments; training reports                      | Lazy state initialization; repeat render computation | Separate small performance cleanup.                                                                                      |
-| Employees; learning video; questions index                  | Ref naming convention                                | Separate mechanical naming cleanup.                                                                                      |
-| Learning video                                              | Missing effect dependency                            | Review reporting subscription lifetime before changing dependencies.                                                     |
-| Profile change; practice; question dialog; training reports | Array-index keys                                     | Review list insertion/removal behavior; practice turns currently append. Do not invent IDs solely to suppress a warning. |
-| My mailbox                                                  | State update in effect                               | Review load/error timing before rescheduling.                                                                            |
-| Sessions                                                    | Date created during render                           | Review refresh semantics before moving the clock read.                                                                   |
-
-Nine residual lint files are byte-identical to the true baseline. The practice file has other upgrade changes but its array-key expression and diagnostic are unchanged. No warning suppression is added. No residual warning is accepted. The separate cleanup has been requested; this fixture-only unit neither performs it nor closes that gate.
-
-Full formatting still reports **54 files**, all byte-identical to `2bfd8d1`; the same current formatter flags those exact baseline files. The delivery includes each path/hash and paired output. These are formatting-only differences in untouched business/test source, with no demonstrated runtime defect; complete a separate formatting-only batch to close the format gate. This step intentionally does not mix that unrelated batch into the upgrade fix.
+The previous quality report recorded 17 lint warnings and 54 format failures. The cleanup result above supersedes those current-state counts. The earlier comparison against `2bfd8d1` remains historical source/toolchain evidence, not a claim that the old dependency graph was installed. The full-format gate is closed for the current worktree; nine behavior-sensitive lint warnings and the separate shutdown/full-acceptance gates remain open.
