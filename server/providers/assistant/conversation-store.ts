@@ -91,9 +91,9 @@ export class ConversationStore {
       ),
     );
     for (const [index, message] of messages.entries()) {
-      const stamp = rows[index]!.createdAt;
+      const stamp = rows[index].createdAt;
       message.additional_kwargs.createdAt =
-        stamp instanceof Date ? stamp.toISOString() : String(stamp);
+        stamp instanceof Date ? stamp.toISOString() : z.string().parse(stamp);
     }
     return messages;
   }
@@ -118,7 +118,7 @@ export class ConversationStore {
               ...message.toDict(),
               data: { ...message.toDict().data, id: messageId },
             }),
-          ),
+          ) as Record<string, unknown>,
           createdAt: new Date(),
         },
       });

@@ -100,7 +100,7 @@ export function createAssistantRoutes(options: {
     async (c) => {
       const input = (await body(
         c,
-        assistantHttpInputs.replaceAssistantUserPrompt!,
+        assistantHttpInputs.replaceAssistantUserPrompt,
       )) as { prompt: string };
       await options
         .service()
@@ -293,7 +293,7 @@ export function createAssistantRoutes(options: {
           c,
           assistantHttpInputs[
             kind === 'send' ? 'sendAssistantMessage' : 'resumeAssistantToolCall'
-          ]!,
+          ],
         )) as Record<string, unknown>;
         if (Object.hasOwn(input, 'sessionId'))
           throw new AssistantInputError('UNSUPPORTED_CHAT_REQUEST');

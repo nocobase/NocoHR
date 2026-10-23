@@ -71,7 +71,7 @@ export class ProcessHistory {
     if (copied) return copied.snapshot as Record<string, unknown>;
     const rows = await this.rows(tx, 'workflows', 'id', id);
     if (rows.length !== 1) throw new Error('PROCESS_DEFINITION_NOT_FOUND');
-    const workflow = rows[0]!;
+    const workflow = rows[0];
     return {
       workflow,
       nodes: await this.rows(tx, 'workflowNodes', 'workflowId', id),
@@ -100,7 +100,7 @@ export class ProcessHistory {
     const rows = await this.rows(tx, 'workflowRuns', 'id', id);
     if (rows.length !== 1) throw new Error('PROCESS_RUN_NOT_FOUND');
     return {
-      run: rows[0]!,
+      run: rows[0],
       nodes: await this.rows(tx, 'workflowNodeRuns', 'workflowRunId', id),
     };
   }
@@ -118,7 +118,7 @@ export class ProcessHistory {
       const workflowRows = await this.rows(tx, 'workflows', 'id', id);
       if (workflowRows.length !== 1)
         throw new Error('PROCESS_DEFINITION_NOT_FOUND');
-      const workflow = workflowRows[0]!;
+      const workflow = workflowRows[0];
       const nodes = await this.rows(tx, 'workflowNodes', 'workflowId', id);
       const artifact = catalog.artifact(legacyId(workflow.key), artifactHash);
       this.verifyDefinition(workflow, nodes, artifact, modules);
@@ -246,7 +246,7 @@ export class ProcessHistory {
     )
       throw new Error('PROCESS_DEFINITION_NOT_MAPPED');
     for (const key of ['parametersSchema', 'parameterValues', 'client'])
-      if (Object.keys((workflow[key] ?? {}) as object).length)
+      if (Object.keys(workflow[key] ?? {}).length)
         throw new Error('PROCESS_CAPABILITY_NOT_MAPPED');
     const options = z
       .strictObject({ timeout: z.literal(0).optional() })
@@ -263,7 +263,7 @@ export class ProcessHistory {
     )
       throw new Error('PROCESS_DEFINITION_NOT_MAPPED');
     const mapped = nodes.map((node) => {
-      if (Object.keys((node.options ?? {}) as object).length)
+      if (Object.keys(node.options ?? {}).length)
         throw new Error('PROCESS_CAPABILITY_NOT_MAPPED');
       const key = legacyId(node.key);
       if (node.type === 'terminate') {
@@ -306,8 +306,8 @@ export class ProcessHistory {
         key,
         type: 'condition',
         handler,
-        yes: yes[0]!.key,
-        no: no[0]!.key,
+        yes: yes[0].key,
+        no: no[0].key,
       };
     });
     for (const node of mapped)
@@ -317,7 +317,7 @@ export class ProcessHistory {
       )
         throw new Error('PROCESS_DEFINITION_NOT_MAPPED');
     const roots = nodes.filter((n) => !n.upstreamKey);
-    if (roots.length !== 1 || roots[0]!.key !== artifact.entry)
+    if (roots.length !== 1 || roots[0].key !== artifact.entry)
       throw new Error('PROCESS_DEFINITION_NOT_MAPPED');
   }
 }

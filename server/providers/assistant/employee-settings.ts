@@ -1,7 +1,8 @@
+import { z } from 'zod';
 import type { DatabaseConnection } from '@nocobase/db';
 import type { AIEmployeeOptions } from '../../ai/contracts.js';
 import { capabilityRecordDigest } from '../upgrade/digest.js';
-import { record } from './legacy-contract.js';
+import { record, legacyId } from './legacy-contract.js';
 
 export const preferenceId = (userId: string, employee: string) =>
   capabilityRecordDigest([userId, employee]);
@@ -59,7 +60,7 @@ export class AssistantEmployeeSettings {
       ...profile,
       systemPrompt:
         mode !== 'raw' && mode !== 'none' && preference?.prompt
-          ? `${prompt}\n\n<personal>\n${String(preference.prompt)}\n</personal>`
+          ? `${prompt}\n\n<personal>\n${z.string().parse(preference.prompt)}\n</personal>`
           : prompt,
     };
   }
@@ -67,12 +68,12 @@ export class AssistantEmployeeSettings {
     const [profiles, preferences] = await this.rows(userId);
     const byName = new Map(
       profiles.map((row) => [
-        String(row.id),
+        legacyId(row.id),
         record(row.profile) as unknown as EmployeeProfile,
       ]),
     );
     const byEmployee = new Map(
-      preferences.map((row) => [String(row.employee), row]),
+      preferences.map((row) => [legacyId(row.employee), row]),
     );
     return [...this.declarations.values()]
       .map((base) => ({
@@ -97,8 +98,8 @@ export class AssistantEmployeeSettings {
     const settings = record(row.settings);
     return settings.defaultModel && settings.defaultLlmService
       ? {
-          model: String(settings.defaultModel),
-          llmService: String(settings.defaultLlmService),
+          model: z.string().parse(settings.defaultModel),
+          llmService: z.string().parse(settings.defaultLlmService),
         }
       : undefined;
   }

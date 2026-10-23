@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtemp, readFile, writeFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -1000,7 +1000,6 @@ it('runs through native Jobs and registers the native Scheduler target and termi
   const executor = jobs.getJobExecutor('@hr/processes');
   const targets = new ScheduleTargetRegistry();
   const reports: unknown[] = [];
-  let enqueue: (eventKey: string, occurrenceId?: string) => Promise<void>;
   const service = new ProcessService(
     f.db.connection(),
     f.catalog,
@@ -1020,7 +1019,7 @@ it('runs through native Jobs and registers the native Scheduler target and termi
     },
     defineSchedule() {},
   };
-  enqueue = (
+  const enqueue = (
     await bindProcessJobs(service, executor, scheduler, (id) =>
       id === 'schedule' ? 'manager' : undefined,
     )
@@ -1138,7 +1137,6 @@ it.each([
       listOccurrences(id: string): Promise<{ status: string }[]>;
     };
     const executor = jobs.getJobExecutor('@hr/processes');
-    let enqueue: (key: string, occurrence?: string) => Promise<void>;
     const service = new ProcessService(
       f.db.connection(),
       f.catalog,
@@ -1146,7 +1144,7 @@ it.each([
       f.authorize,
       async (k, o) => enqueue(k, o),
     );
-    enqueue = (
+    const enqueue = (
       await bindProcessJobs(service, executor, scheduler, () => 'manager')
     ).enqueue;
     scheduler.defineSchedule({

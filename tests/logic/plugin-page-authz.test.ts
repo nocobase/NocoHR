@@ -33,16 +33,16 @@ describe('management page authorization', () => {
       action: 'read',
     });
   });
-  it('retains the outstanding notification administration grant in the complete composition', async () => {
-    expect(
-      (await composition()).some(
-        (route) =>
-          route.componentLoader &&
-          route.packageName === '@nocobase/app-plugin-notification' &&
-          typeof route.authz === 'object' &&
-          route.authz.resource.type === 'page' &&
-          route.authz.action === 'access',
-      ),
-    ).toBe(true);
+  it('retains the notification logs URL and its existing page grant', async () => {
+    const logs = (await composition()).find(
+      (route) => route.name === 'notifications.logs',
+    );
+    expect(logs?.path).toBe('/settings/notifications/logs');
+    expect(logs?.componentLoader).toBeTypeOf('function');
+    expect(logs?.auth).toBe('required');
+    expect(logs?.authz).toEqual({
+      resource: { type: 'page', id: 'notification.logs' },
+      action: 'access',
+    });
   });
 });

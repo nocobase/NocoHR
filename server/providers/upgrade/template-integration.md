@@ -39,7 +39,7 @@ The first Settings navigation showed loading before the page appeared; later nav
 
 ## Remaining upgrade gates
 
-1. `tests/logic/plugin-page-authz.test.ts` still fails: AI administration and notification delivery-log pages are no longer contributed by the retired/new plugin composition. Restore application-owned management surfaces with their existing permission IDs and replace the plugin-ownership assertion with the real route contract. Do not delete the check or declare completion merely because install/build passes.
+1. Historical integration defect: the plugin-owned AI/notification management pages disappeared. Native Models was restored in the native-AI unit; [quality closure](quality-closure.md) restores notification logs with its original URL and page grant, without test-send. The original failing assertion was valid upgrade evidence, not a pre-upgrade exemption.
 2. Reconcile the remaining template source review, including missing management/diagram modules and their actual business consumers. Do not add unused empty workflow menus. Move the template marker only after the complete source reconciliation and acceptance.
 3. Complete the assistant's remaining product contracts (including upload/resend/reconnect where exposed) and real model configuration acceptance; the fresh verification has no external model credentials. Closed runtime defaults are not a replacement for these features.
 4. Production history, configuration overrides, old migration archives and credential conversion need a representative backed-up deployment. Fresh-instance checks cannot certify that cutover; preflight remains blocking.

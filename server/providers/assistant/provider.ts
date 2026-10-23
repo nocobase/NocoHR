@@ -92,10 +92,10 @@ export default class AssistantProvider extends ServiceProvider<Application> {
             employees: this.settings!,
             openFile: async (file) =>
               Readable.toWeb(
-                (await container
+                await container
                   .resolve(driveManagerToken)
                   .use(file.disk)
-                  .getStream(file.path)) as Readable,
+                  .getStream(file.path),
               ) as ReadableStream<Uint8Array>,
             canReadAnyFile: async (actor) => {
               const effect = String(

@@ -1509,6 +1509,7 @@ const enUS = {
     page: '{{title}} page',
   },
   settings: {
+    notificationLogs: 'Notification logs',
     revokeAssignmentFor: 'Revoke role for “{{name}}”?',
     authorizationInspector: 'Permission inspector',
     defaultAccess: 'Default Access',
@@ -1602,6 +1603,7 @@ const enUS = {
     signingOut: 'Signing out…',
   },
   navigation: {
+    breadcrumbMore: 'Show the levels in between',
     ...coreHrAdditions.en.navigation,
     // V3-10
     ...examAdditions.en.navigation,

@@ -33,7 +33,7 @@ export class ProcessCatalog {
         throw new Error('INVALID_PROCESS_ARTIFACT_PATH');
       const bytes = await readFile(file);
       if (bytes.length > 1048576) throw new Error('PROCESS_ARTIFACT_TOO_LARGE');
-      const artifact = JSON.parse(bytes.toString());
+      const artifact: unknown = JSON.parse(bytes.toString());
       const definition = loadProcessArtifact(artifact, this.handlers);
       if (
         definition.key !== item.key ||
@@ -41,7 +41,7 @@ export class ProcessCatalog {
         loaded.has(item.hash)
       )
         throw new Error('PROCESS_MANIFEST_CONFLICT');
-      loaded.set(item.hash, artifact);
+      loaded.set(item.hash, artifact as ProcessArtifact);
     }
     this.artifacts.clear();
     for (const [hash, artifact] of loaded) this.artifacts.set(hash, artifact);

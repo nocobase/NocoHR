@@ -1,3 +1,5 @@
+import { realtimeClientToken } from '@nocobase/app-client';
+import { createRealtimeFixture } from '../fixtures/realtime-client.js';
 import {
   TestI18nProvider,
   createTestI18nRuntime,
@@ -188,6 +190,7 @@ function renderApplication(
   } as never);
   vi.spyOn(authorizationClient, 'can').mockResolvedValue(true);
   const registered = new Map<unknown, unknown>([
+    [realtimeClientToken, createRealtimeFixture()],
     [
       apiClientToken,
       {
@@ -206,6 +209,7 @@ function renderApplication(
     runtime: { routes: [] },
     services: {
       has: (token: unknown) => registered.has(token),
+      resolveIfCreated: (token: unknown) => registered.get(token),
       resolve: (token: unknown) => {
         if (registered.has(token)) return registered.get(token);
         throw new Error(`Unexpected service token: ${String(token)}`);

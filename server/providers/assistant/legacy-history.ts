@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { DatabaseConnection } from '@nocobase/db';
 import type { Conversation } from './conversation-store.js';
 import {
@@ -39,11 +40,11 @@ export class LegacyAssistantHistory {
     return {
       id: legacyId(row.sessionId),
       userId: legacyId(row.userId),
-      employee: String(row.aiEmployeeUsername ?? ''),
-      title: String(row.title ?? ''),
+      employee: z.string().parse(row.aiEmployeeUsername ?? ''),
+      title: z.string().parse(row.title ?? ''),
       model: {
-        model: String(model.model ?? ''),
-        llmService: String(model.llmService ?? ''),
+        model: z.string().parse(model.model ?? ''),
+        llmService: z.string().parse(model.llmService ?? ''),
       },
       mode: 'chat',
       // A retained source is read-only until explicitly copied. This is not a claim that its old execution completed.

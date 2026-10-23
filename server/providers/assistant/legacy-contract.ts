@@ -38,7 +38,8 @@ export function fileReference(input: Record<string, unknown>) {
     path.startsWith('/') ||
     path.includes('\\') ||
     path.split('/').some((p) => !p || p === '.' || p === '..') ||
-    /%|[\u0000-\u001f]/u.test(path)
+    path.includes('%') ||
+    [...path].some((character) => character.charCodeAt(0) < 32)
   )
     throw new Error('INVALID_LEGACY_FILE_PATH');
   return {

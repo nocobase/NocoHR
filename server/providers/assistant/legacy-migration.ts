@@ -184,7 +184,7 @@ export class LegacyAssistantMigration {
     if (
       chatSettings.systemPromptMode != null &&
       !['default', 'raw', 'none'].includes(
-        String(chatSettings.systemPromptMode),
+        z.string().parse(chatSettings.systemPromptMode),
       )
     )
       throw new Error('AI_CAPABILITY_NOT_MAPPED');
@@ -645,7 +645,7 @@ export class LegacyAssistantMigration {
           {
             userId,
             employee,
-            title: String(conversation.title ?? ''),
+            title: z.string().parse(conversation.title ?? ''),
             model,
             mode: 'chat',
             state: waiting ? 'pending' : 'idle',

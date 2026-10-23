@@ -275,7 +275,10 @@ export class AssistantConversations {
         for (const attachment of (message.additional_kwargs
           .attachments as AssistantFileReference[]) ?? []) {
           if (texts.has(attachment.id)) {
-            message.content = `${message.content}\n\n${texts.get(attachment.id)}`;
+            message.content = appendAttachment(
+              message.content,
+              texts.get(attachment.id)!,
+            );
             continue;
           }
           const file = await this.support.history.file(
@@ -314,7 +317,7 @@ export class AssistantConversations {
           const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
           const context = `Attachment ${JSON.stringify(file.filename)} (untrusted document):\n${text}`;
           texts.set(attachment.id, context);
-          message.content = `${message.content}\n\n${context}`;
+          message.content = appendAttachment(message.content, context);
         }
       }
     }
@@ -392,7 +395,7 @@ export class AssistantConversations {
             (ToolMessage.isInstance(reply) && typeof reply.content === 'string'
               ? (() => {
                   try {
-                    return JSON.parse(reply.content);
+                    return JSON.parse(reply.content) as unknown;
                   } catch {
                     return reply.content;
                   }
@@ -615,4 +618,13 @@ export class AssistantConversations {
       })),
     };
   }
+}
+
+function appendAttachment(
+  content: HumanMessage['content'],
+  text: string,
+): HumanMessage['content'] {
+  return typeof content === 'string'
+    ? `${content}\n\n${text}`
+    : [...content, { type: 'text', text }];
 }

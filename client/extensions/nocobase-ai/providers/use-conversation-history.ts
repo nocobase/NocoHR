@@ -154,8 +154,14 @@ export function useConversationHistory({
     if (!chatSurfaceOpen || activeConversationId === AI_DRAFT_CONVERSATION_ID) {
       return;
     }
-    void load(activeConversationId);
+    // Start the asynchronous subscription after the effect is installed. A superseded
+    // surface must not start a request during Strict Mode cleanup or a conversation change.
+    let active = true;
+    queueMicrotask(() => {
+      if (active) void load(activeConversationId);
+    });
     return () => {
+      active = false;
       openVersionRef.current += 1;
     };
   }, [activeConversationId, chatSurfaceOpen, load]);

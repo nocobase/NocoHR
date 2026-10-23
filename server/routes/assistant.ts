@@ -1,4 +1,7 @@
-import { authenticationToken } from '@nocobase/app-plugin-authentication/server';
+import {
+  authenticationToken,
+  type AuthEnv,
+} from '@nocobase/app-plugin-authentication/server';
 import {
   authorizationToken,
   type AuthorizationEnv,
@@ -41,8 +44,9 @@ export const assistantRoutes: AppApiRouteContribution<Application> =
         Boolean(app.config.get<AssistantConfig>('assistant')?.enabled),
       service: () => container.resolve(assistantConversationsToken),
       actor: (context) => {
-        const principal = (context as Context<AuthorizationEnv>).get('authz')
-          .identity.principal;
+        const principal = (context as Context<AuthorizationEnv, string>).get(
+          'authz',
+        ).identity.principal;
         if (principal.type !== 'user') throw new Error('ASSISTANT_FORBIDDEN');
         return {
           id: String(principal.id),
@@ -53,9 +57,15 @@ export const assistantRoutes: AppApiRouteContribution<Application> =
       },
       guard: async (c, next) => {
         let authorized: Response | void = undefined;
-        const authenticated = await auth.required()(c, async () => {
-          authorized = await authz.middleware()(c, next);
-        });
+        const authenticated = await auth.required()(
+          c as Context<AuthEnv, string>,
+          async () => {
+            authorized = await authz.middleware()(
+              c as Context<AuthorizationEnv, string>,
+              next,
+            );
+          },
+        );
         return authenticated ?? authorized;
       },
       document: (operationId, summary, streaming) => {
@@ -106,8 +116,8 @@ export const assistantRoutes: AppApiRouteContribution<Application> =
                         },
                       }
                     : assistantListOperations.has(operationId)
-                      ? listResponse(assistantResponses[operationId]!)
-                      : dataResponse(assistantResponses[operationId]!),
+                      ? listResponse(assistantResponses[operationId])
+                      : dataResponse(assistantResponses[operationId]),
               ...apiErrorResponses,
               '400': apiErrorResponse(400),
               '404': apiErrorResponse(404),

@@ -143,7 +143,6 @@ export async function bindProcessJobs(
 ) {
   // Load the new Jobs API only for the explicitly enabled runtime.
   const { Job } = await import('@nocobase/jobs');
-  let target: ScheduleTargetHandle;
   class ExecuteProcess extends Job<ProcessJobPayload> {
     static readonly jobName = 'app.processes.execute';
     public async execute({ signal }: JobExecutionContext) {
@@ -163,7 +162,7 @@ export async function bindProcessJobs(
     }
   }
   executor.registerJob(ExecuteProcess);
-  target = scheduler.registerTarget({
+  const target: ScheduleTargetHandle = scheduler.registerTarget({
     type: 'app.process',
     title: 'Application process',
     validate: (config) => ({

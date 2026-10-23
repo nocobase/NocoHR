@@ -318,7 +318,9 @@ function Editor({
   const actions: ReactNode[] = [];
   // V4-13 生成英文版 (the server checks the owner or hr.admin).
   if (course && canWrite.can)
-    actions.push(<TranslateButton key='translate' type='course' id={course.id} />);
+    actions.push(
+      <TranslateButton key='translate' type='course' id={course.id} />,
+    );
   if (course && canWrite.can && canDraftQuestions.can) {
     actions.push(
       <AssistantLauncher

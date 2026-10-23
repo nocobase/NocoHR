@@ -1385,6 +1385,7 @@ const zhCN: AppResource = {
     page: '{{title}}页面',
   },
   settings: {
+    notificationLogs: '通知投递日志',
     revokeAssignmentFor: '撤销“{{name}}”的角色授权？',
     authorizationInspector: '权限检查器',
     defaultAccess: '默认数据范围',
@@ -1469,6 +1470,7 @@ const zhCN: AppResource = {
     signingOut: '正在退出…',
   },
   navigation: {
+    breadcrumbMore: '显示中间层级',
     ...coreHrAdditions.zh.navigation,
     // V3-10
     ...examAdditions.zh.navigation,

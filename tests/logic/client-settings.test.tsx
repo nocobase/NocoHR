@@ -1,3 +1,5 @@
+import { realtimeClientToken } from '@nocobase/app-client';
+import { createRealtimeFixture } from '../fixtures/realtime-client.js';
 import { I18nRuntime } from '@nocobase/i18n';
 import { I18nProvider } from '@nocobase/i18n/client';
 import appLocales from '../../client/locales/index.js';
@@ -15,7 +17,13 @@ import {
   AuthorizationClient,
   authorizationClientToken,
 } from '@nocobase/app-plugin-authorization/client';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter, Outlet, useParams } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -355,20 +363,31 @@ describe('settings centre', () => {
           page('root-only', 'unrestricted', loader),
         ],
       );
-      expect(await screen.findByRole('link', { name: 'open' })).toBeVisible();
+      expect(
+        await within(
+          await screen.findByRole('navigation', { name: 'Settings' }),
+        ).findByRole('link', { name: 'open' }),
+      ).toBeVisible();
       if (opens) {
         expect(await screen.findByText('Root only content')).toBeVisible();
-        expect(screen.getByRole('link', { name: 'root-only' })).toBeVisible();
+        expect(
+          within(
+            screen.getByRole('navigation', { name: 'Settings' }),
+          ).getByRole('link', { name: 'root-only' }),
+        ).toBeVisible();
       } else {
         // Hidden from the menu, so the settings centre moves on to a page the user may open.
         await waitFor(() =>
-          expect(screen.getByRole('link', { name: 'open' })).toHaveAttribute(
-            'aria-current',
-            'page',
-          ),
+          expect(
+            within(
+              screen.getByRole('navigation', { name: 'Settings' }),
+            ).getByRole('link', { name: 'open' }),
+          ).toHaveAttribute('aria-current', 'page'),
         );
         expect(
-          screen.queryByRole('link', { name: 'root-only' }),
+          within(
+            screen.getByRole('navigation', { name: 'Settings' }),
+          ).queryByRole('link', { name: 'root-only' }),
         ).not.toBeInTheDocument();
         expect(screen.queryByText('Root only content')).not.toBeInTheDocument();
         expect(loader).not.toHaveBeenCalled();
@@ -777,6 +796,7 @@ function renderWithAuthentication(
     (request) => authorization?.can(request) ?? Promise.resolve(true),
   );
   const registered = new Map<unknown, unknown>([
+    [realtimeClientToken, createRealtimeFixture()],
     // The header's 通知 bell asks for the unread count.
     [apiClientToken, { request: vi.fn().mockResolvedValue({ count: 0 }) }],
     [authenticationClientToken, authClient],
@@ -786,6 +806,7 @@ function renderWithAuthentication(
     runtime: { routes: settingsRouteTree },
     services: {
       has: (token: unknown) => registered.has(token),
+      resolveIfCreated: (token: unknown) => registered.get(token),
       resolve: (token: unknown) => {
         if (registered.has(token)) return registered.get(token);
         throw new Error(`Unexpected service token: ${String(token)}`);

@@ -1,6 +1,7 @@
 import { modelsRoute } from '@nocobase/app-plugin-agents/client/routes';
 import {
   Database,
+  FileClock,
   Settings,
   Users,
   ShieldCheck,
@@ -22,6 +23,17 @@ const systemSettingsRoutes: AppClientRouteContribution = defineAppRoutes([
     navigation: { title: 'settings.title', icon: Settings, order: 100 },
     children: [
       { ...modelsRoute, navigation: { title: 'nativeAI.models' } },
+      {
+        name: 'notifications.logs',
+        path: '/notifications/logs',
+        auth: 'required',
+        authz: {
+          resource: { type: 'page', id: 'notification.logs' },
+          action: 'access',
+        },
+        navigation: { title: 'settings.notificationLogs', icon: FileClock },
+        componentLoader: () => import('./notification-logs/index.js'),
+      },
       {
         name: 'database-explorer',
         path: '/database-explorer',

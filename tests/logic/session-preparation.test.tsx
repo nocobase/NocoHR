@@ -1,3 +1,5 @@
+import { apiClientToken } from '@nocobase/app-client';
+import { createRealtimeFixture } from '../fixtures/realtime-client.js';
 import {
   ClientApplicationContext,
   realtimeClientToken,
@@ -57,6 +59,7 @@ async function setup() {
   const services = new ServiceContainer();
   const listeners = new Set<() => void>();
   const realtime = {
+    ...createRealtimeFixture(),
     active: true,
     reconnect: vi.fn(),
     onOpen: (listener: () => void) => {
@@ -74,6 +77,9 @@ async function setup() {
     signOut,
   } as never);
   services.instance(realtimeClientToken, realtime as never);
+  services.instance(apiClientToken, {
+    request: vi.fn().mockResolvedValue({ data: [] }),
+  } as never);
   services.instance(authorizationClientToken, authz);
   const mounted = vi.fn();
   const cleaned = vi.fn();

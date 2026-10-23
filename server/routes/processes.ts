@@ -1,4 +1,7 @@
-import { authenticationToken } from '@nocobase/app-plugin-authentication/server';
+import {
+  authenticationToken,
+  type AuthEnv,
+} from '@nocobase/app-plugin-authentication/server';
 import {
   authorizationToken,
   type AuthorizationEnv,
@@ -30,23 +33,29 @@ export const processRoutes = defineApiRoutes<Application>((app) => {
     authz = app.container.resolve(authorizationToken);
   const guard = async (c: Context, next: () => Promise<void>) => {
     let authorized: Response | void;
-    const authenticated = await auth.required()(c, async () => {
-      authorized = await authz.middleware()(c, async () => {
-        if (!app.config.get<ProcessesConfig>('processes')?.enabled)
-          throw new ApiError({
-            status: 'UNAVAILABLE',
-            domain: 'nocohr',
-            message: 'Processes are unavailable',
-            reason: 'PROCESSES_DISABLED',
-          });
-        await next();
-      });
-    });
+    const authenticated = await auth.required()(
+      c as Context<AuthEnv, string>,
+      async () => {
+        authorized = await authz.middleware()(
+          c as Context<AuthorizationEnv, string>,
+          async () => {
+            if (!app.config.get<ProcessesConfig>('processes')?.enabled)
+              throw new ApiError({
+                status: 'UNAVAILABLE',
+                domain: 'nocohr',
+                message: 'Processes are unavailable',
+                reason: 'PROCESSES_DISABLED',
+              });
+            await next();
+          },
+        );
+      },
+    );
     return authenticated ?? authorized!;
   };
   const actor = (c: Context) => {
-    const principal = (c as Context<AuthorizationEnv>).get('authz').identity
-      .principal;
+    const principal = (c as Context<AuthorizationEnv, string>).get('authz')
+      .identity.principal;
     if (principal.type !== 'user')
       throw new ApiError({
         status: 'PERMISSION_DENIED',
