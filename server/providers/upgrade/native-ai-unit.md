@@ -1,5 +1,7 @@
 # Native AI unit
 
+Current integration status: [the consolidated matrix](integration-acceptance.md). Subsequent ordinary generation, routing/bills, IM approvals and staged native Knowledge search are integrated and independently checked in their linked unit records; older remaining-caller lists below describe this unit's original boundary. Persistent knowledge Q&A stays deferred. Nonexistent old-environment migration/archive items are not applicable; new-environment acceptance remains applicable.
+
 New model settings, employee chat and learning-plan generation now use the official Agents service. [The ordinary generation follow-up](native-background-unit.md) records settings proposals and the remaining structured callers migrated afterward. The selected callers have one native execution path. Existing histories and business data are retained. The complete template upgrade remains unaccepted; do not merge or deploy it.
 
 ## Verified behavior

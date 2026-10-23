@@ -877,9 +877,7 @@ it('keeps the form draft and hides backend details after a save validation failu
   await user.clear(title);
   await user.type(title, 'Keep this draft');
   await user.click(screen.getByRole('button', { name: 'Save rule' }));
-  expect(
-    await screen.findByText(/unable to complete the request/i),
-  ).toBeTruthy();
+  expect(await screen.findByText(enUS.settings.invalidRequest)).toBeTruthy();
   expect(screen.getByLabelText('Rule name')).toHaveValue('Keep this draft');
   expect(screen.queryByText('private server detail')).toBeNull();
   expect(

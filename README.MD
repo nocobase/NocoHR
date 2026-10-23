@@ -1,6 +1,6 @@
-# NocoBase 3 Application
+# NocoHR application
 
-A full-stack NocoBase 3 application. The server runs on `@nocobase/app-server` and the browser client is React with Refine, shadcn/ui, and Tailwind CSS.
+A full-stack NocoBase 3 application. The server runs on `@nocobase/app-server` and the browser client uses React, shadcn/ui and Tailwind CSS. NocoHR adds its own HR business, authorization and administration surfaces.
 
 You own everything in this directory. Add pages, API routes, database tables, and business logic directly here — this is your application's source code, not a framework you extend from the outside.
 
@@ -9,6 +9,20 @@ You own everything in this directory. Add pages, API routes, database tables, an
 Default provides the application shell and product capabilities without example plugins or business demo pages. Application-owned routes start empty, and new databases receive no article sample data. Its built-in Users integration lists direct Authorization Permission Sets as application roles, while access assigned to all authenticated users remains separate. Use `app-template-examples` for article management and runnable plugin demonstrations.
 
 Existing Default installations retain their data when example plugins are unregistered. If an installation already ran the article migration, retain its original migration sources as described in the [upgrade migration rules](.agents/skills/nocobase-app-upgrade/references/edge-cases.md#migrations) before upgrading. Do not erase migration history or delete existing data to make an upgrade start.
+
+## Current template integration
+
+The fixed upgrade target is `@nocobase/app-template-default@1.0.0-beta.76` with Skills `0.1.0-beta.44`. The source completion marker stays `.54` until the final evidence is accepted; it is not the application's own version. See the [integration acceptance matrix](server/providers/upgrade/integration-acceptance.md), [complete file ownership ledger](server/providers/upgrade/template-ownership.tsv) and [test ownership](server/providers/upgrade/integration-test-ownership.md) for the current checks and remaining failures.
+
+New model settings, employee chat, ordinary structured generation and IM approvals use official Agents services. Knowledge search keeps authorized HR documents separate from new native Knowledge storage and indexes. Persistent knowledge Q&A and body/search chat tools remain deferred. Compatibility assistant/process/device entry defaults stay closed. Production channels are not activated by the upgrade.
+
+A new production configuration must include the actual `talent.companyName` and appropriate model/channel settings through their native administration surfaces. Restoring local sqlite-vec indexes requires the same logical storage mount; moving the store path changes the official index target and requires an explicit official Reindex. Preserve the coordinated database, files, vector store, job state and encryption configuration; a code archive alone is not a backup. The disposable recovery drill is opt-in:
+
+```sh
+UPGRADE_ACCEPTANCE_OUTPUT=<owned-temporary-evidence-directory> pnpm exec tsx tests/acceptance/upgrade-recovery.ts
+```
+
+It creates only synthetic isolated data, uses native test authentication and a local controlled embedding service, and removes its databases/configuration/backups after shutdown. It does not use a deployment configuration or external credentials.
 
 ## Getting started
 
