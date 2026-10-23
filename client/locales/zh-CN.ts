@@ -1,3 +1,4 @@
+import flowDiagram from './system/flow-diagram-zh-CN.js';
 import agentChat from '../extensions/nocobase-agent-chat/locales/zh-CN.js';
 import authorizationInspector from './modules/authorization-inspector-zh-CN.js';
 import defaultAccess from './modules/default-access-zh-CN.js';
@@ -33,6 +34,7 @@ import type { AppResource } from './en-US.js';
 
 const zhCN: AppResource = {
   ...agentChat,
+  flowDiagram,
   nativeAI: {
     models: '模型设置',
     title: '人事助手',

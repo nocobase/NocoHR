@@ -1,3 +1,4 @@
+import flowDiagram from './system/flow-diagram-en-US.js';
 import agentChat from '../extensions/nocobase-agent-chat/locales/en-US.js';
 import authorizationInspector from './modules/authorization-inspector-en-US.js';
 import defaultAccess from './modules/default-access-en-US.js';
@@ -33,6 +34,7 @@ import type { LocaleResource } from '@nocobase/i18n';
 
 const enUS = {
   ...agentChat,
+  flowDiagram,
   nativeAI: {
     models: 'Models',
     title: 'HR assistant',
