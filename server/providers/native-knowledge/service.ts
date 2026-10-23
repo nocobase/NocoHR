@@ -16,6 +16,7 @@ import { HrError } from '../hr/shared.js';
 import { authorizeAction, scopeForUser } from '../hr/authorize.js';
 import { assertUnrestrictedNativeAIEntry } from '../native-ai/access.js';
 import type { bindKnowledgeIndex } from './indexer.js';
+import { currentKnowledgeHits } from './search-results.js';
 
 export interface DualKnowledgeSearch {
   legacy: {
@@ -93,18 +94,11 @@ export function createNativeKnowledgeService(deps: {
           ),
         );
         native.semantic = found.semantic;
-        // Recheck current grants/node ACL after awaiting an embedding; a revoked hit is never returned.
-        for (const hit of found.value) {
-          try {
-            const doc = await deps.knowledge.docs.get(
-              { userId: ctx.userId },
-              hit.docId,
-            );
-            if (doc.version === hit.version) native.items.push(hit);
-          } catch (error) {
-            if (!hidden(error)) throw error;
-          }
-        }
+        native.items = await currentKnowledgeHits(
+          deps.knowledge,
+          { userId: ctx.userId },
+          found.value,
+        );
         // Refresh directory labels/counts too, after a possibly long model request.
         summaries = await spaces(ctx);
       } catch {

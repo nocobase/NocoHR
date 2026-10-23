@@ -12,6 +12,7 @@ import {
 import { defineApiRoutes, ApiError } from '@nocobase/app-server/router';
 import { Hono, type Context } from 'hono';
 import type { AppPluginApplication } from '@nocobase/app-server/plugins';
+import { currentKnowledgeHits } from './search-results.js';
 
 /** Keep official APIs/tickets, checking the original entry before reducing it to a user reader. */
 export const nativeKnowledgeRoutes = defineApiRoutes<AppPluginApplication>(
@@ -44,7 +45,19 @@ export const nativeKnowledgeRoutes = defineApiRoutes<AppPluginApplication>(
     routes.route(
       '/',
       createKnowledgeRoutes(
-        knowledge,
+        {
+          ...knowledge,
+          docs: {
+            ...knowledge.docs,
+            // Keep the official HTTP schema/envelope; its reader search needs the facade's fresh-result check too.
+            search: async (reader, ...args) =>
+              currentKnowledgeHits(
+                knowledge,
+                reader,
+                await knowledge.docs.search(reader, ...args),
+              ),
+          },
+        },
         (c) => ({
           userId: String(
             (c as Context<AuthorizationEnv>).get('authz').identity.principal.id,

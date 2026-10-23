@@ -135,13 +135,19 @@ const ctx = async (userId: string) => ({
 });
 let fixtureConfig: NativeKnowledgeConfig;
 const config = () => fixtureConfig;
-async function cost<T>(name: string, work: () => Promise<T>) {
+async function cost<T>(
+  name: string,
+  work: () => Promise<T>,
+  exclude: () => boolean = () => false,
+) {
   const sql: string[] = [];
   const db = await app.connection.client<{
     on(event: string, cb: (q: { sql: string }) => void): void;
     removeListener(event: string, cb: (q: { sql: string }) => void): void;
   }>();
-  const listener = (q: { sql: string }) => sql.push(q.sql);
+  const listener = (q: { sql: string }) => {
+    if (!exclude()) sql.push(q.sql);
+  };
   const before = inputs.length;
   const vectorBefore = vectorSQL.length;
   const txBefore = vectorTransactions;
@@ -787,6 +793,169 @@ describe('native Knowledge application connection', () => {
       ).id;
     }
   });
+  it('keeps authorized direct search results and the official response envelope', async () => {
+    const response = await cost('direct-search-authorized', () =>
+      app.request('/knowledge/search?scope=hr&scopeId=alpha&q=holiday', {
+        headers: { cookie: readerCookie },
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.meta).toEqual({});
+    expect(body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          docId: doc,
+          title: 'Holiday handbook',
+          version: 1,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(body)).toContain('Holiday policy');
+    expect(JSON.stringify(body)).not.toContain('Confidential payroll');
+  });
+
+  it('rechecks direct HTTP search revocation during embedding', async () => {
+    const authz = app.application.container.resolve(authorizationToken);
+    let changingGrant = false;
+    beforeEmbedding = async () => {
+      beforeEmbedding = undefined;
+      changingGrant = true;
+      try {
+        await cost('direct-search-fixture-revoke', () =>
+          authz.permissionSets.revoke(assignment),
+        );
+      } finally {
+        changingGrant = false;
+      }
+    };
+    try {
+      const response = await cost(
+        'direct-search-revoked',
+        () =>
+          app.request('/knowledge/search?scope=hr&scopeId=alpha&q=holiday', {
+            headers: { cookie: readerCookie },
+          }),
+        () => changingGrant,
+      );
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body).toEqual({ data: [], meta: {} });
+      expect(JSON.stringify(body)).not.toContain('Holiday');
+      expect(JSON.stringify(body)).not.toContain(doc);
+    } finally {
+      beforeEmbedding = undefined;
+      assignment = (
+        await authz.permissionSets.assign({
+          subject: { type: 'user', id: reader },
+          permissionSet: 'knowledge-native-read',
+        })
+      ).id;
+    }
+  });
+  it('rechecks HR use revocation on the direct reader search', async () => {
+    const authz = app.application.container.resolve(authorizationToken);
+    beforeEmbedding = async () => {
+      beforeEmbedding = undefined;
+      await authz.permissionSets.revoke(useAssignment);
+    };
+    try {
+      const response = await app.request(
+        '/knowledge/search?scope=hr&scopeId=alpha&q=holiday',
+        {
+          headers: { cookie: readerCookie },
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ data: [], meta: {} });
+    } finally {
+      beforeEmbedding = undefined;
+      useAssignment = (
+        await authz.permissionSets.assign({
+          subject: { type: 'user', id: reader },
+          permissionSet: 'knowledge-reader',
+        })
+      ).id;
+    }
+  });
+
+  it.each(['title', 'content'] as const)(
+    'omits a direct hit whose %s version changes after retrieval and keeps the fresh version searchable',
+    async (field) => {
+      const kb = app.application.container.resolve(knowledgeToken);
+      const original = await kb.docs.create(
+        { userId: root },
+        {
+          ...alpha,
+          title: 'Versionguard before',
+          content: 'Versionguard original authorized content.',
+        },
+      );
+      await indexed(original.id);
+      const search = kb.docs.search;
+      let updated = original;
+      // Run real retrieval, then commit a real version at the last await before the application returns hits.
+      const boundary = vi
+        .spyOn(kb.docs, 'search')
+        .mockImplementationOnce(async (...args) => {
+          const hits = await search(...args);
+          expect(
+            hits.some(
+              (hit) =>
+                hit.docId === original.id && hit.version === original.version,
+            ),
+          ).toBe(true);
+          updated = await kb.docs.update({ userId: root }, original.id, {
+            expectedVersion: original.version,
+            title: field === 'title' ? 'Versionguard after' : original.title,
+            content:
+              field === 'content'
+                ? 'Versionguard updated authorized content.'
+                : original.content,
+          });
+          return hits;
+        });
+      try {
+        const response = await app.request(
+          '/knowledge/search?scope=hr&scopeId=alpha&q=versionguard',
+          {
+            headers: { cookie: readerCookie },
+          },
+        );
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(
+          body.data.some((hit: { docId: string }) => hit.docId === original.id),
+        ).toBe(false);
+        expect(JSON.stringify(body)).not.toContain('Versionguard before');
+        expect(JSON.stringify(body)).not.toContain(
+          'Versionguard original authorized content',
+        );
+      } finally {
+        boundary.mockRestore();
+      }
+      await indexed(original.id, updated.version);
+      const fresh = await app.request(
+        '/knowledge/search?scope=hr&scopeId=alpha&q=versionguard',
+        {
+          headers: { cookie: readerCookie },
+        },
+      );
+      expect(fresh.status).toBe(200);
+      expect((await fresh.json()).data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            docId: original.id,
+            version: updated.version,
+            title: updated.title,
+          }),
+        ]),
+      );
+      await kb.docs.archive({ userId: root }, original.id);
+      await indexed(original.id);
+    },
+  );
+
   it('rechecks files, historical versions, exports and one-time proposal tickets after space revocation', async () => {
     const container = app.application.container,
       kb = container.resolve(knowledgeToken),
