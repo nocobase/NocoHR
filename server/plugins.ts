@@ -19,6 +19,8 @@ import file from '@nocobase/app-plugin-file/server';
 import mail from '@nocobase/app-plugin-mail/server';
 import agents from '@nocobase/app-plugin-agents/server';
 import foundation from '@nocobase/app-plugin-foundation/server';
+import knowledge from '@nocobase/app-plugin-knowledge/server';
+import { nativeKnowledgeRoutes } from './providers/native-knowledge/routes.js';
 
 const serverPlugins: AppServerPlugins = defineServerPlugins([
   authentication,
@@ -38,6 +40,8 @@ const serverPlugins: AppServerPlugins = defineServerPlugins([
   mail,
   agents,
   foundation,
+  // Preserve official storage/services; the application guards the original authorization entry.
+  { ...knowledge, routes: [nativeKnowledgeRoutes] },
 ]);
 
 export default serverPlugins;

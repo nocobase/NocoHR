@@ -1,5 +1,7 @@
 # Process execution and retained history
 
+> Current scope, 2026-10-23: the owner confirmed there is no used old environment or existing production data. The older installed-inventory/archive requirements below are historical and are not applicable to this application; they are not passed migration/restore tests. Preserve all 138 source files. New-environment definitions/handlers, actual business behavior, authorization, idempotence, strict installation/build/source-and-build startup and isolated new-database restore remain applicable. This unit's closed runtime/preflight is unchanged.
+
 This unit connects the existing process compiler and durable state to native Jobs and Scheduler, with authorized APIs and explicit terminal-history copying. It is opt-in through `processes.enabled` (default false). Existing plugins, tables, files and historical migration sources remain in place. The application registry is deliberately empty: installed business definitions and handlers still need individual mapping before any switch.
 
 ## Verified source and bounded mapping
@@ -151,4 +153,4 @@ The new SQLite trace includes actual native authorization and work-item queries,
 
 ## Presentation foundation (fixed template .76)
 
-The [separate presentation unit](process-presentation-unit.md) adds the standard Flow/Lifecycle diagrams and workflow-management display parts. It registers no business page or definition and does not change this runtime, scheduler, histories, authorization or closed cutover gate. Real definition/parameter/history adapters still require the installed inventory described above.
+The [separate presentation unit](process-presentation-unit.md) adds the standard Flow/Lifecycle diagrams and workflow-management display parts. It registers no business page or definition and does not change this runtime, scheduler, histories, authorization or closed cutover gate. New-environment definition/parameter/history adapters still require actual repository contracts and authorized current APIs. They do not wait for a nonexistent old deployment inventory.

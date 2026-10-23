@@ -1,3 +1,4 @@
+import nativeKnowledge from './native-knowledge.js';
 import {
   defaultAppConfigs,
   type AppConfigFactory,
@@ -40,6 +41,7 @@ import contentSecurityPolicy from './content-security-policy.js';
 import publicEndpoints from './public-endpoints.js';
 
 const defaultConfigs: AppConfigFactory<{
+  nativeKnowledge: ReturnType<typeof nativeKnowledge>;
   auth: ReturnType<typeof auth>;
   secrets: ReturnType<typeof secrets>;
   users: ReturnType<typeof users>;
@@ -71,6 +73,7 @@ const defaultConfigs: AppConfigFactory<{
   contentSecurityPolicy: ReturnType<typeof contentSecurityPolicy>;
   publicEndpoints: ReturnType<typeof publicEndpoints>;
 }> = defaultAppConfigs({
+  nativeKnowledge,
   auth,
   secrets,
   users,

@@ -18,6 +18,7 @@ import file from '@nocobase/app-plugin-file/client';
 import mail from '@nocobase/app-plugin-mail/client';
 import agents from '@nocobase/app-plugin-agents/client';
 import foundation from '@nocobase/app-plugin-foundation/client';
+import knowledge from '@nocobase/app-plugin-knowledge/client';
 
 // Array order is contribution order. A plugin is enabled by appearing in this
 // list; removing its entry and its import disables it.
@@ -38,6 +39,7 @@ const clientPlugins: AppClientPlugins = defineClientPlugins([
   mail(),
   agents(),
   foundation(),
+  knowledge({ routes: false }),
 ]);
 
 export default clientPlugins;

@@ -35,6 +35,27 @@ import type { LocaleResource } from '@nocobase/i18n';
 const enUS = {
   ...agentChat,
   flowDiagram,
+  nativeKnowledge: {
+    users: 'Users',
+    sourceForbidden: 'You are not authorized to search this source.',
+    tab: 'Search sources',
+    description:
+      'Search HR documents and native knowledge separately. Each source keeps its own permissions and references.',
+    query: 'Search knowledge',
+    search: 'Search',
+    legacy: 'HR documents',
+    native: 'Native knowledge',
+    spaces: 'Authorized native spaces',
+    noSpaces: 'No native knowledge spaces are authorized.',
+    noResults: 'No matching authorized documents.',
+    sourceUnavailable: 'This source is unavailable. Try again later.',
+    semanticUnavailable:
+      'Semantic search is unavailable. Native text matches are shown.',
+    version: 'Version {{version}}',
+    back: 'Back to source search',
+    qaDeferred:
+      'Persistent knowledge Q&A is not enabled. Search results do not start a chat.',
+  },
   nativeAI: {
     models: 'Models',
     title: 'HR assistant',

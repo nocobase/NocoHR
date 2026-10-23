@@ -222,3 +222,21 @@ processes:
   # This is server-only delegation, not a role grant. The user must retain workflow/manage.
   # No default/root execution user; missing bindings refuse execution. Target JSON cannot set the user.
   scheduleUsers: {}
+
+# Native Knowledge is separate from retained HR documents. No space is implicitly public.
+# Configure real native model services in Settings > Models; select an embedding model here.
+# Membership only bounds *.related grants; it does not grant actions. Assign knowledge-use
+# and native kb.knowledge/read.related (plus propose/edit/manage as needed) through Roles.
+# *.all is an explicit administrator grant across configured spaces. No HR grants are copied.
+nativeKnowledge:
+  spaces: []
+  # Example (replace IDs explicitly; do not import legacy documents/permissions):
+  # - scope: hr
+  #   scopeId: handbook
+  #   title: HR handbook
+  #   relatedUserIds: [explicit-user-id]
+  embedding: null
+  # embedding: { modelService: configured-service-name, model: configured-embedding-model }
+# Official vectors use isolated storage/vectors.sqlite by default. A model/dimension change
+# is reconciled by the official document Reindex action; it builds the derived index from
+# native chunks while the ready index serves. No legacy semantic index is imported.
