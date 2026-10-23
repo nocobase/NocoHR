@@ -105,7 +105,9 @@ describe('process display components', () => {
             : zhCN.flowDiagram.failed,
         ),
       );
-      expect(error).toHaveBeenCalled();
+      await waitFor(() => expect(error).toHaveBeenCalled());
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(error.mock.calls[0]?.[0]).toBeInstanceOf(Error);
     },
   );
   it('selects a sorted history prefix without changing input or executing an effect', async () => {

@@ -17,6 +17,9 @@ import {
   vi,
 } from 'vitest';
 
+import { observeFixtureClose } from '../helpers/close-diagnostics.ts';
+import { observeSchedulerClose } from '../helpers/scheduler-close-diagnostics.ts';
+
 import {
   createStandaloneServer,
   type StandaloneServer,
@@ -52,6 +55,7 @@ const PASSWORD = 'talent-acceptance-test-password';
 type Json = Record<string, any>;
 
 let server: StandaloneServer;
+let diagnostics: ReturnType<typeof observeSchedulerClose>;
 let directory: string;
 let base: string;
 const cookies = new Map<string, string>();
@@ -144,11 +148,25 @@ beforeAll(async () => {
       storageDir: path.join(directory, 'storage'),
     },
   });
+  diagnostics = observeSchedulerClose(
+    server.application,
+    'training-acceptance',
+  );
   base = `http://localhost${server.application.publicBasePath}`;
 }, 180_000);
 
 afterAll(async () => {
-  await server?.close();
+  try {
+    await observeFixtureClose({
+      suite: 'training-acceptance',
+      stage: 'application',
+      application: server?.application,
+      state: () => diagnostics?.snapshot() ?? {},
+      close: () => server?.close(),
+    });
+  } finally {
+    diagnostics?.restore();
+  }
   delete process.env.HR_DEMO_PASSWORD;
   if (directory) rmSync(directory, { recursive: true, force: true });
 });

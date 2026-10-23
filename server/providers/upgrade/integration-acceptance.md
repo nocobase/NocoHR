@@ -12,6 +12,14 @@ The subsequent fixture-only unit stops unrelated official Scheduler calendar wor
 
 Updated types, full build and strict source/compiled Notification page checks from the production quality unit remain reusable: this subsequent unit changes only tests and records. Changed-code lint/format, scoped diagnostic-helper TypeScript and record links pass. Full lint remains **0 errors / 17 warnings**, formatting **54 unchanged pre-upgrade files**; both gates remain failed pending their separately requested cleanup. The older matrix below is retained as evidence from `6350d42`, not the current result.
 
+## Internal-close diagnostic follow-up
+
+The process test now independently waits for the error callback, retaining the alert, callback count and Error-content checks. The two original failing API fixtures keep their calendars active and observe their own Scheduler internals through to backend/state persistence and event recording/delivery. No production mechanism, timeout or dependency changes. The prior fixture-isolation failures above remain historical evidence.
+
+Diagnostic self-check/component cases pass **12**, and the real target combination passes **160**. Exactly one full run has **234/235 files passing and 1976/1976 cases passing**, exit 1. The callback tests pass, while the unchanged attendance/Feishu suite times out closing its application. Original training and authorization-review fixtures close in **29/32 ms** with no pending internal phases; their prior failure remains unlocalized, and scheduled handler/target/event-delivery paths did not execute in those two applications in this run.
+
+Same-window observation of the new failing application stops at Scheduler shutdown after **30006 ms**. Its post-exit synthetic store retains an unfinished mail-poll occurrence and three running native mail-sync records; the earlier close snapshots show Mail already shut down. This narrows a mail-poll/close-order candidate, with causal verification still needed. [Quality closure](quality-closure.md) gives the exact evidence and conditional lifecycle proposal; no production ordering or protocol change is implemented. The prior diagnostic's registerOnly misuse and corrected probe are retained separately as tooling history, not a product failure.
+
 ## Scope and ownership
 
 - The [284-path ledger](template-ownership.tsv) reconciles the complete derived `.54 → .76` template span: 76 target-synchronized paths, 148 application-retained paths, 17 application adaptations and 43 mapped test/fixture paths. Hashes identify the fixed target and checked application bytes. Retention is an explicit ownership decision, not a claim of identical upstream behavior. [Test ownership](integration-test-ownership.md) explains the twelve absent upstream test filenames and application equivalents/boundaries.
@@ -60,7 +68,7 @@ An initial synthetic compiled configuration omitted the required company name an
 
 ## Remaining applicable closure
 
-- Independently review the fixture isolation and both full-run close records. Resolve the two remaining application-close waits and process-presentation callback assertion, and complete the separately requested residual warning/format cleanup before final acceptance. Use the quality follow-up for current results; source ownership is not an exemption. Intermediate-version reproduction is not an exemption. Marker `.54`, disabled gates and preflight remain unchanged pending closure.
+- Independently review the fixture isolation and both full-run close records. Review the callback wait and test-only internal observers, resolve shutdown acceptance using the recorded mail-poll/close-order candidate, and complete the separately requested residual warning/format cleanup before final acceptance. Use the quality follow-up for current results; source ownership is not an exemption. Intermediate-version reproduction is not an exemption. Marker `.54`, disabled gates and preflight remain unchanged pending closure.
 - Persistent knowledge Q&A remains deferred by the staged product boundary. Real external model/provider validation is required before activating that provider. PostgreSQL/pgvector and multi-instance Jobs need validation when those deployment forms are chosen. SQLite single-instance evidence does not cover them.
 - Fixed Agents `.18` metadata-v1 evidence is reused; recheck that contract when changing that plugin. No source/history migration or installed old-environment recovery is asserted.
 - Final acceptance, merge and deployment remain with the owner. No deployment, production-channel activation or release occurs here.
