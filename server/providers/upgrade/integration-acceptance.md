@@ -2,6 +2,10 @@
 
 The fixed `.76` / Skills `.44` application installs with the frozen lock, passes all three TypeScript projects and the complete build, and starts from source and compiled output. An isolated new-database restore preserves business records, native files, real sqlite-vec indexes and authorization. **Quality follow-up:** the locale key, native-service test hosts and lost notification management route were upgrade defects, not proven pre-upgrade failures. They are corrected by [the quality closure unit](quality-closure.md); its current results supersede the historical failure classification below. Independent evidence review and final closure are still required; the PR stays draft, the source marker stays `.54`, and compatibility/device/process gates and preflight stay unchanged.
 
+## Early-drain prerequisite result
+
+The public Jobs-only early-drain proposal fails its reconciliation concurrency prerequisite and is not installed. An official Scheduler/Jobs/SQLite probe passes when inspection ends before close, but fails when inspection remains active across executor drain and application dependency cleanup. The [contract record](shutdown-drain-contract.md) defines the missing public lifecycle operation and exact protected seed dependencies. This delivery changes records only; it does not rerun adapter build/start/full tests or mark the mail-close defect fixed. Existing runtime evidence and all failing quality gates remain visible below.
+
 ## Quality follow-up result
 
 The quality unit fixes the breadcrumb locale, missing Notification management route, native client fixture registration and recipient-specific notification waiting. Its production changes passed independent review; the earlier **1973 passing cases / one profile afterAll timeout** remains historical evidence.
