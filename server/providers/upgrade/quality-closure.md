@@ -1,6 +1,6 @@
 # Upgrade quality closure
 
-The breadcrumb translation, native client test hosts and notification management route are upgrade fixes. They are not pre-upgrade exemptions. Current verification and the remaining source-quality findings are recorded below; independent review is still required. The PR remains draft, `.54` and all compatibility gates/preflight remain unchanged.
+The upgrade translation, notification route, test hosts and nine client warning fixes are closed, including independent UTC and ten-category nonempty report verification at `47f38cc`. Full lint/format and all three type projects passed for that source. Historical failure logs below are preserved; they are not outstanding quality warnings. Current artifact/HTTP/recovery/full-suite results are in the [application-only acceptance unit](app-only-acceptance.md). Complete background shutdown remains a separate external-contract gap. The PR remains draft; `.54`, preflight and gates remain unchanged.
 
 ## Client warning follow-up after `fd0f071`
 
@@ -10,7 +10,7 @@ All nine warnings from the `fd0f071` snapshot are now addressed without rule sup
 
 The proposed Jobs-only tail adapter is not registered. A controlled official Scheduler/Jobs/SQLite test finds that an in-flight reconciliation can outlive executor drain and dependency cleanup (**1 control passed / 1 safety assertion failed**). [The contract record](shutdown-drain-contract.md) supplies the reproducible boundary, public lifecycle alternative, fixed-scope upgrade checks and exact seed-data/history paths. No production source or test budget changes. This precondition stopped that adapter proposal and its dependent full/build/start validation; it did not close the previously confirmed mail-shutdown defect.
 
-As of 2026-10-24, the old official-workspace configuration gap is resolved and PM-668 has an active implementation run in official `nocobase/nocobase` `v3-develop` for the approved Scheduler drain contract and Jobs failure-close behavior. Independent review, CI, owner approval and an exact publisher-assigned release are still pending. nocoHR has not changed package dependencies or installed an adapter. The eventual app integration and final shutdown/build/start/restore acceptance remain separate work.
+**Owner scope, 2026-10-24 08:59:** only the application is in scope. Do not continue official package implementation, publishing or external CI requests. Scheduler `.19` / Jobs `.3` lack the complete public drain boundary; no Jobs-only adapter is installed. Independent application checks can proceed without those package activities.
 
 ## Mechanical quality cleanup at `bf643ff`
 
@@ -54,7 +54,7 @@ An independent temporary SQLite/storage instance used only synthetic seeds and n
 
 Each measured API sample is one HTTP request. Anonymous denial: 0 SQL; administrator empty list: 26 SELECT; ordinary employee denial: 33 SELECT; explicit grant: 20 SELECT; revocation: 18 SELECT. All five windows have zero INSERT/UPDATE/DELETE/transactions/model requests. Test grant/revoke, login, initialization and browser SQL are outside these windows; they are not claimed free. The page reads once on mount and once per Refresh, without polling or sending. These cold/warm samples are not a fixed budget.
 
-## Callback waiting and internal close diagnostics
+## Historical callback waiting and internal close diagnostics
 
 The process-presentation test now waits separately for the error callback after observing the translated alert. It retains the original callback assertion and checks one callback carrying an Error in each language. Production layout/callback effects and test timeouts are unchanged. The independent source review distinguished alert state rendering from its later callback effect; it did not reproduce a missing production callback.
 
@@ -78,7 +78,7 @@ Read-only inspection after that worker exits finds one persisted running occurre
 
 The prior independent probe initially passed `registerOnly=true`, leaving its synthetic task untriggered until the test deadline. Its corrected probe schedules the task normally and passes. Both logs remain supplied as diagnostic-tool history; the first is not classified as a product shutdown fault. Prior full-run timeout and callback failures remain in the historical sections below.
 
-Cost: these are test-only observers and a test wait correction, with no new production request, query, model call, persistent state or execution mechanism. Recording a phase reads memory and emits a local log line. Existing real fixture initialization, authorization changes, business/Jobs SQL and model work are outside prior measured endpoint windows and are not zero; this unit does not add a controlled minute task to ordinary tests. Post-failure inspection adds **5 SELECT and 6 schema PRAGMA operations** on the disposable synthetic SQLite, with no writes, model calls or external requests; it is outside endpoint windows. Independent review, residual warning/format cleanup and complete shutdown acceptance remain required.
+Cost: these are test-only observers and a test wait correction, with no new production request, query, model call, persistent state or execution mechanism. Recording a phase reads memory and emits a local log line. Existing real fixture initialization, authorization changes, business/Jobs SQL and model work are outside prior measured endpoint windows and are not zero; this unit does not add a controlled minute task to ordinary tests. Post-failure inspection adds **5 SELECT and 6 schema PRAGMA operations** on the disposable synthetic SQLite, with no writes, model calls or external requests; it is outside endpoint windows. At that historical point independent review, residual warning/format cleanup and complete shutdown acceptance remained required. The subsequent quality reviews closed the first two; complete shutdown remains open.
 
 ## API fixture calendar isolation
 

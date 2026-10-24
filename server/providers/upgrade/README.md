@@ -1,4 +1,6 @@
-# Capability migration foundations
+# Capability migration foundations (historical)
+
+Current status: the fixed target is template `.76` / Skills `.44`, native Agents and authorized dual-source Knowledge search are connected, and retired AI/Workflow plugins remain removed. The owner now limits work to the application; see [current application-only acceptance](app-only-acceptance.md) and [integration status](integration-acceptance.md). No external package implementation or CI follow-up is assigned here. Source marker `.54`, preflight and disabled compatibility gates remain. The original foundation design below is retained as historical evidence, not an instruction to restore the old execution chain.
 
 The application is preparing to replace its retired AI Employee and incompatible Workflow plugins before merging the fixed template `1.0.0-beta.74` (paired with `@nocobase/app-skills@0.1.0-beta.42`, from `https://registry.npmjs.org`). Existing adapters were verified against the previous `.70` / `.38` target; see [integration status](template-integration.md) for the pending Client 4 / Server 3 / Agents / Realtime work and dependency blockers. The current template declaration remains `1.0.0-beta.54`. The existing plugins remain the default runtimes. An application-owned text chat runtime is registered behind `assistant.enabled`, which defaults to false. Installing this code does not change deployment configuration or remove the old plugins.
 

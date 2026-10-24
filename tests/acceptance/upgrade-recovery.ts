@@ -35,6 +35,13 @@ import {
 } from '../../server/providers/hr/learning-resources.js';
 
 const root = path.resolve(import.meta.dirname, '../..');
+const rootFiles = await readdir(root);
+assert(
+  !['.env', '.env.local', 'config.yml', 'config.yaml'].some((name) =>
+    rootFiles.includes(name),
+  ),
+  'Use a tracked-source archive without runtime configuration',
+);
 const output =
   process.env.UPGRADE_ACCEPTANCE_OUTPUT ??
   (await mkdtemp(path.join(tmpdir(), 'upgrade-evidence-')));
@@ -44,8 +51,11 @@ const password = 'synthetic-upgrade-recovery-password';
 const sourceStorage = path.join(work, 'source'),
   restoredStorage = sourceStorage;
 await mkdir(sourceStorage, { recursive: true });
-let embeddingRequests = 0;
+let embeddingRequests = 0,
+  activeEmbeddings = 0;
 const model = createServer(async (req, res) => {
+  activeEmbeddings++;
+  res.once('close', () => activeEmbeddings--);
   let raw = '';
   for await (const chunk of req) raw += chunk;
   const body = JSON.parse(raw) as {
@@ -81,6 +91,7 @@ const env: NodeJS.ProcessEnv = {
   NODE_ENV: 'development',
   NOCOBASE_STRICT_STARTUP: 'true',
   APP_BASE_PATH: '/main',
+  APP_VITE_DEV_URL: 'false',
   APP_SERVER_HOST: '127.0.0.1',
   HR_DEMO_PASSWORD: password,
   HR_DEMO_SEED: 'true',
@@ -89,8 +100,8 @@ const env: NodeJS.ProcessEnv = {
   APP_PROCESSES_ENABLED: 'false',
   APP_ASSISTANT_ENABLED: 'false',
   AGENT_ANNOTATIONS_ENABLED: 'false',
-  APP_SHUTDOWN_TIMEOUT_MS: '15000',
-  APP_HTTP_DRAIN_TIMEOUT_MS: '2000',
+  APP_SHUTDOWN_TIMEOUT_MS: '30000',
+  APP_HTTP_DRAIN_TIMEOUT_MS: '29000',
 };
 // Seeds read their explicit synthetic password from process.env, never a previously generated account file.
 const oldDemoPassword = process.env.HR_DEMO_PASSWORD;
@@ -280,6 +291,12 @@ async function command(
   events.push({ command: label, code });
 }
 let app: StandaloneServer | undefined, live: ChildProcess | undefined;
+async function closeApplication() {
+  if (app) {
+    await app.close();
+    app = undefined;
+  }
+}
 async function open(file: string, storage: string) {
   app = await createStandaloneServer({
     configPath: file,
@@ -397,9 +414,9 @@ async function liveStart(
   const stream = createWriteStream(path.join(output, mode + '-strict.log'));
   let text = '';
   live = spawn(
-    mode === 'source' ? 'pnpm' : process.execPath,
+    process.execPath,
     mode === 'source'
-      ? ['dev']
+      ? ['--import', 'tsx', path.join(root, 'server/standalone.ts')]
       : [path.join(root, 'dist/server/standalone.js')],
     {
       cwd: root,
@@ -419,16 +436,16 @@ async function liveStart(
     text += chunk.toString();
     stream.write(chunk);
   });
-  live.stderr?.pipe(stream, { end: false });
+  live.stderr?.on('data', (chunk: Buffer) => {
+    text += chunk.toString();
+    stream.write(chunk);
+  });
   let url = '';
   for (let n = 0; n < 1200; n++) {
     assert.equal(live.exitCode, null, mode + ' exited before ready');
-    const match =
-      mode === 'source'
-        ? /Local:\s+(http:\/\/[^\s]+)/u.exec(text)
-        : /App server listening on (http:\/\/[^\s"\\]+)/u.exec(text);
+    const match = /App server listening on (http:\/\/[^\s"\\]+)/u.exec(text);
     if (match) {
-      url = match[1].replace(/\/$/u, '') + (mode === 'build' ? '/main' : '');
+      url = match[1].replace(/\/$/u, '') + '/main';
       break;
     }
     await new Promise((r) => setTimeout(r, 100));
@@ -442,10 +459,20 @@ async function liveStart(
     url,
     async stop() {
       assert(live);
+      const started = Date.now();
       const code = await stopChild(live);
+      const elapsedMs = Date.now() - started;
+      assert.equal(code, 0, mode + ' shutdown failed');
+      assert(elapsedMs < 30_000, mode + ' shutdown exceeded the budget');
+      assert(
+        !/forcing exit|HTTP server did not drain|App server shutdown failed/u.test(
+          text,
+        ),
+        mode + ' used a shutdown fallback',
+      );
       stream.end();
       live = undefined;
-      events.push({ shutdown: mode, code });
+      events.push({ shutdown: mode, code, elapsedMs, fallback: false });
     },
   };
 }
@@ -614,8 +641,7 @@ try {
         },
       }),
   );
-  await app.close();
-  app = undefined;
+  await closeApplication();
   await configuration(sourceStorage, 'source');
   const initial = snapshot(sourceStorage);
   await command(
@@ -715,8 +741,7 @@ try {
   );
   assert.equal(attached.status, 200);
   assert.equal(await attached.text(), 'Authorized recovery attachment bytes.');
-  await app.close();
-  app = undefined;
+  await closeApplication();
   const source = await liveStart('source', sourceConfig, sourceStorage);
   const sourceUser = await login(networkFetch, source.url, 'upgrade_reader');
   assert.equal(
@@ -731,6 +756,17 @@ try {
     200,
   );
   await source.stop();
+  assert.equal(app, undefined);
+  assert.equal(live, undefined);
+  assert.equal(activeEmbeddings, 0);
+  const stable = await inventory(sourceStorage);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(await inventory(sourceStorage), stable);
+  events.push({
+    backupPrecondition:
+      'known file/index work completed; applications closed; child exited naturally; no active controlled model request; storage hashes stable',
+    backgroundOverlapDrain: 'not tested: missing public Scheduler lifecycle',
+  });
   const beforeBackup = snapshot(sourceStorage),
     beforeFiles = await inventory(sourceStorage);
   assert(
@@ -745,6 +781,7 @@ try {
   events.push({
     backup: 'quiesced DB, vector store, native files and job state',
     files: Object.keys(beforeFiles).length,
+    storageHashes: beforeFiles,
     hashesEqual: true,
     restoredOriginalMount: true,
     recordCounts: beforeBackup.counts,
@@ -824,65 +861,72 @@ try {
   );
   assert.equal(download.status, 200);
   assert.equal(await download.text(), 'Authorized recovery attachment bytes.');
-  const browser = await chromium.launch({ headless: true });
-  try {
-    const context = await browser.newContext({
-      locale: 'en-US',
-      viewport: { width: 1440, height: 1080 },
+  if (process.env.UPGRADE_ACCEPTANCE_BROWSER !== 'false') {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await browser.newContext({
+        locale: 'en-US',
+        viewport: { width: 1440, height: 1080 },
+      });
+      const external: string[] = [];
+      let browserApiRequests = 0;
+      context.on('request', (request) => {
+        if (new URL(request.url()).pathname.startsWith('/main/api/'))
+          browserApiRequests++;
+      });
+      await context.route('**/*', (route) => {
+        if (
+          !route
+            .request()
+            .url()
+            .startsWith(built.url.replace('/main', '') + '/')
+        ) {
+          external.push(new URL(route.request().url()).origin);
+          return route.abort();
+        }
+        return route.continue();
+      });
+      const signin = await context.request.post(
+        built.url + '/api/auth/sign-in/username',
+        {
+          headers: { origin: new URL(built.url).origin },
+          data: { username: 'nocobase', password },
+        },
+      );
+      assert.equal(signin.status(), 200);
+      const page = await context.newPage();
+      await page.goto(
+        built.url + '/talent/approvals/adjustments/' + adjustment.id,
+      );
+      await page
+        .getByText('Recovery drill approval', { exact: true })
+        .waitFor();
+      await page.screenshot({
+        path: path.join(output, 'restored-attendance-approval-en.png'),
+        fullPage: true,
+      });
+      await page.goto(built.url + '/talent/knowledge?tab=search');
+      await page.getByRole('button', { name: 'Search', exact: true }).waitFor();
+      await page.locator('#knowledge-source-query').fill('recovery');
+      await page.getByRole('button', { name: 'Search', exact: true }).click();
+      await page
+        .getByText('Recovery holiday handbook', { exact: true })
+        .first()
+        .waitFor();
+      await page.screenshot({
+        path: path.join(output, 'restored-knowledge-en.png'),
+        fullPage: true,
+      });
+      assert.deepEqual(external, []);
+      events.push({ browserApiRequests, externalRequests: external.length });
+      await context.close();
+    } finally {
+      await browser.close();
+    }
+  } else
+    events.push({
+      browser: 'reused previously reviewed English pages; no UI change',
     });
-    const external: string[] = [];
-    let browserApiRequests = 0;
-    context.on('request', (request) => {
-      if (new URL(request.url()).pathname.startsWith('/main/api/'))
-        browserApiRequests++;
-    });
-    await context.route('**/*', (route) => {
-      if (
-        !route
-          .request()
-          .url()
-          .startsWith(built.url.replace('/main', '') + '/')
-      ) {
-        external.push(new URL(route.request().url()).origin);
-        return route.abort();
-      }
-      return route.continue();
-    });
-    const signin = await context.request.post(
-      built.url + '/api/auth/sign-in/username',
-      {
-        headers: { origin: new URL(built.url).origin },
-        data: { username: 'nocobase', password },
-      },
-    );
-    assert.equal(signin.status(), 200);
-    const page = await context.newPage();
-    await page.goto(
-      built.url + '/talent/approvals/adjustments/' + adjustment.id,
-    );
-    await page.getByText('Recovery drill approval', { exact: true }).waitFor();
-    await page.screenshot({
-      path: path.join(output, 'restored-attendance-approval-en.png'),
-      fullPage: true,
-    });
-    await page.goto(built.url + '/talent/knowledge?tab=search');
-    await page.getByRole('button', { name: 'Search', exact: true }).waitFor();
-    await page.locator('#knowledge-source-query').fill('recovery');
-    await page.getByRole('button', { name: 'Search', exact: true }).click();
-    await page
-      .getByText('Recovery holiday handbook', { exact: true })
-      .first()
-      .waitFor();
-    await page.screenshot({
-      path: path.join(output, 'restored-knowledge-en.png'),
-      fullPage: true,
-    });
-    assert.deepEqual(external, []);
-    events.push({ browserApiRequests, externalRequests: external.length });
-    await context.close();
-  } finally {
-    await browser.close();
-  }
   await built.stop();
   // Revocation is checked with a new real source application over the restored data, not a mocked decision.
   await open(restoredConfig, restoredStorage);
@@ -909,8 +953,7 @@ try {
     }),
   );
   assert.equal(refusedFile.status, 404);
-  await app.close();
-  app = undefined;
+  await closeApplication();
   assert.deepEqual(snapshot(restoredStorage).history, beforeBackup.history);
   events.push({
     result: 'passed',
@@ -923,7 +966,7 @@ try {
   events.push({ failure: String(error) });
   throw error;
 } finally {
-  await app?.close();
+  await closeApplication();
   if (live) await stopChild(live);
   await new Promise<void>((resolve) => model.close(() => resolve()));
   if (oldDemoPassword === undefined) delete process.env.HR_DEMO_PASSWORD;

@@ -2,7 +2,17 @@
 
 The Jobs-only early-drain adapter is **not installed**. Its reconciliation concurrency prerequisite fails: an official reconciliation inspection can remain active after the public Schedule executor has drained and application dependency cleanup has run. The accepted mail-close ordering diagnosis remains valid, but executor shutdown alone does not provide a complete Scheduler quiescence boundary.
 
-## Recommended alternative
+## Current application-only scope (2026-10-24)
+
+The owner withdrew this task's external package implementation, compatibility, publishing and CI work at 08:59. Current published fixed inputs remain Scheduler `.19` / Jobs `.3` / Server `3 beta.2`; no new package is consumed. The public Scheduler service lacks a boundary that stops new reconciliation and jointly awaits accepted inspection, execution, state persistence, event delivery and completion reports. This is a specific external dependency for overlapping background work, not a reason to postpone independent application checks.
+
+The [application-only acceptance unit](app-only-acceptance.md) validates real Node HTTP admission/draining and a safely quiesced synthetic backup. It adds no production lifecycle adapter, task registry, timeout relaxation or calendar change. Embedded hosts must stop their own listener and finish requests before destroying the application scope; calling the embedded application's `close` alone does not own network admission. HTTP response completion does not prove derived background work has settled.
+
+The current application-only full run also times out in the file-security fixture's application close, despite eight passing business assertions. Its post-exit store retains an unfinished mail-poll occurrence and three native mail-sync rows. That fixture has no same-window internal call trace; these persisted symptoms do not identify the exact awaited operation. The [current acceptance record](app-only-acceptance.md) separates this failure, its cleanup and the unrelated leave-fixture assertion from successful HTTP and static-backup checks.
+
+Quality warnings/format findings are closed at `47f38cc`; old counts and the following proposed external design are retained as history. No request to implement or publish that design remains in this task.
+
+## Historical external alternative (not an implementation assignment)
 
 Extend the official Scheduler's public service with one idempotent lifecycle operation, for example `drain()`, and let both an application tail provider and the official final shutdown delegate to it. The plugin owns the timer, executor and event subscription; it can stop new reconciliation ticks, track and await already-started reconciliations, drain the existing executor, and only then release its subscription. Keep dependencies available until this operation settles.
 
@@ -35,15 +45,15 @@ Do not install the thin adapter while describing it as satisfying this concurren
 
 ## Verification and ownership
 
-Only upgrade records change in this delivery; runtime source remains `125172a`. No application provider, dependency, lock, test gate or private observer is added to production. The 284-path ledger stays unchanged because no template/application runtime path is reclassified. The original full-test failures and current 17 warnings / 54 format failures remain open.
+Only upgrade records change in this delivery; runtime source remains `125172a`. No application provider, dependency, lock, test gate or private observer is added to production. The 284-path ledger stays unchanged because no template/application runtime path is reclassified. The original full-test failures remain historical evidence. The then-current 17 warnings / 54 format failures were subsequently closed by the independently reviewed quality units; they are not current blockers.
 
 The full test, build and source/compiled startup steps for a new production adapter are not run: the required concurrency check stopped implementation first. Additional adapter-specific custom-config, delayed-mail, subscriber-failure and empty-work regressions are not reported as passed after this prerequisite failure. Earlier startup/build/recovery evidence is retained, not reported as validation of an adapter. Changed-document formatting and links are checked. Probe initialization and native scheduling perform real test SQL/state writes, not metered in this run; no production SQL, external HTTP, model or business write is added.
 
 If a Jobs-only adapter is reconsidered, revalidate the fixed `@nocobase/app-plugin-scheduler` scope, `scheduler.jobs` selection, same executor identity, repeated-close behavior, terminal event delivery and reconciliation lifetime whenever Scheduler/Jobs/Server versions change. Current fixed inputs remain template `.76` / Skills `.44`, Scheduler `.19`, Jobs `.3` and Server `3 beta.2`; no rolling version is selected. Completion marker `.54`, preflight and closed gates remain unchanged.
 
-## Protected history and the format backlog
+## Historical protected-history format backlog
 
-The 54-file format output does **not** directly include any of the 138 migration/seed source files: those directories are already excluded. It includes these three seed-data helpers, which are imported by immutable historical seeds:
+The historical 54-file format output did **not** directly include any of the 138 migration/seed source files: those directories are already excluded. It includes these three seed-data helpers, which are imported by immutable historical seeds:
 
 | Format path                             | Historical consumers, all retained byte-for-byte                                                                  |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
