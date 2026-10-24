@@ -742,5 +742,79 @@
     }
   ],
   "ownership": "Application-owned maintenance; no changed source path belongs to upstream ledger",
-  "ledgerSourceIntersections": []
+  "ledgerSourceIntersections": [],
+  "finalApprovedWarningFixes": {
+    "baseline": "f6b77e4",
+    "scope": "Approved local-midnight calendar refresh and read-only training detail row identity",
+    "entries": [
+      {
+        "path": "client/pages/talent/sessions/index.tsx",
+        "before": "cf9d24bf5edebc3591ddac647edcdd8636c28807a81ca7c94ea0b1d2ea58f88e",
+        "after": "4564823c26cc9831bb86a32f8d94d275485330e627acc15281a8f910a1cee2fe"
+      },
+      {
+        "path": "client/pages/talent/training-reports/index.tsx",
+        "before": "a6f1fbe77da6100155ab4fbe8f81b85d50af6ed41666210b341bda970cca5bdb",
+        "after": "6059ccd39ce05965beef60ebac469b3af1f046d6a4434b276c6a7d0a0d18c211"
+      },
+      {
+        "path": "server/providers/hr/insight-service.ts",
+        "before": "d59ca25d151211b6c6e55c6de25ce87b0a09829de35abfbc4d97075ca0a8bb11",
+        "after": "4ea3115ecac0bad89b0f93f1f502acbd6995680740bb18b742217055220457d1"
+      },
+      {
+        "path": "tests/components/sessions-calendar.test.tsx",
+        "before": null,
+        "after": "3b5ce7a36da9cc5a09ccac9c0acd40fdd19d0be43d3d2f3cbd75114157d5864e"
+      },
+      {
+        "path": "tests/components/training-report-row-keys.test.tsx",
+        "before": null,
+        "after": "334f296501b624fff3fce3aab356877156569ae3bc65091c381683ae9f9bf559"
+      },
+      {
+        "path": "tests/logic/training-acceptance.test.ts",
+        "before": "572809e264c76c34529dc4a9e1b641c8c0f9ac59fe59ff710f1e947f31312849",
+        "after": "1e106fb3eff56ddc83b9cc370bf1d451e9b6a9e9927de72836c550f8776b2b70"
+      },
+      {
+        "path": "server/providers/upgrade/quality-warning-unit.md",
+        "before": "9109231898d669ea5d408d065caafeb14a72847ef68557e0d8a4ba7b1f6f180c",
+        "after": "84c65a3af87b461e04de3b81137cdbf733f20cb6dcbf42ea2944940f77936d28"
+      },
+      {
+        "path": "server/providers/upgrade/quality-closure.md",
+        "before": "2c680b1d26f515750d5dd387050f6711c32f68852dc750333df58eb81fa9a2bb",
+        "after": "e1e7346af1c22ce76aefc0c427aa2dfe3303a81e3689f1642890212b719a0c1b"
+      },
+      {
+        "path": "server/providers/upgrade/integration-acceptance.md",
+        "before": "893be5c6c940a1d0ef375bd7093b958d1963e5ee0dce0b3689a6ba6b5017ee93",
+        "after": "65cd80429f7f3818378947fee591e47575bd165d4e9fc978c53a64802b3d16a5"
+      },
+      {
+        "path": "server/providers/upgrade/evidence/quality-warning-final/sessions-calendar-en.png",
+        "before": null,
+        "after": "346327354dd81512604749bab047828fed834008b1019691c8b53a89b8c8110c"
+      },
+      {
+        "path": "server/providers/upgrade/evidence/quality-warning-final/training-report-details-en.png",
+        "before": null,
+        "after": "3da968647364d433eb30b4ac7447ac586f629d5814dca2a22b5dba8c26162c6a"
+      }
+    ],
+    "changedApplicationSources": [
+      "client/pages/talent/sessions/index.tsx",
+      "client/pages/talent/training-reports/index.tsx",
+      "server/providers/hr/insight-service.ts"
+    ],
+    "additionalPrimaryKeySelectsInExistingQueries": [
+      "trainingEnrollments.id",
+      "practiceSessions.id",
+      "knowledgeGaps.id"
+    ],
+    "persistentSchemaOrDataChanges": false,
+    "additionalQueryCount": 0,
+    "ledgerSourceIntersections": []
+  }
 }

@@ -4,15 +4,17 @@ The breadcrumb translation, native client test hosts and notification management
 
 ## Client warning follow-up after `fd0f071`
 
-Seven warnings are addressed without rule suppression: stable video reporting, three profile draft row identities, explicit mailbox async feedback, practice display identity and blank-answer draft identity. The [unit record](quality-warning-unit.md) documents payload boundaries, the final-video-segment regression, costs and the two precise deferred proposals. The nine-warning table below is retained as history, not a claim that every item requires a product decision. Current lint still fails its zero-warning gate for the date clock and report row identity; shutdown acceptance remains separately blocked. Verification logs and English real-route screenshots accompany this delivery.
+All nine warnings from the `fd0f071` snapshot are now addressed without rule suppression. The seven reviewed fixes cover stable video reporting, three profile draft row identities, explicit mailbox async feedback, practice display identity and blank-answer draft identity. The last two implement the local-midnight/visibility calendar refresh and readonly training-report row keys described in the [unit record](quality-warning-unit.md). The historical nine-warning table below describes the earlier snapshot only. At this delivery head, full `pnpm lint` reports zero errors and zero warnings; shutdown acceptance remains separately blocked. The updated record includes targeted regressions and English real-route screenshots.
 
 ## Early-drain concurrency prerequisite
 
-The proposed Jobs-only tail adapter is not registered. A controlled official Scheduler/Jobs/SQLite test finds that an in-flight reconciliation can outlive executor drain and dependency cleanup (**1 control passed / 1 safety assertion failed**). [The contract record](shutdown-drain-contract.md) supplies the reproducible boundary, public lifecycle alternative, fixed-scope upgrade checks and exact seed-data/history paths. No production source or test budget changes. This precondition stops the adapter's implementation and dependent full/build/start validation; it does not close the previously confirmed mail-shutdown defect.
+The proposed Jobs-only tail adapter is not registered. A controlled official Scheduler/Jobs/SQLite test finds that an in-flight reconciliation can outlive executor drain and dependency cleanup (**1 control passed / 1 safety assertion failed**). [The contract record](shutdown-drain-contract.md) supplies the reproducible boundary, public lifecycle alternative, fixed-scope upgrade checks and exact seed-data/history paths. No production source or test budget changes. This precondition stopped that adapter proposal and its dependent full/build/start validation; it did not close the previously confirmed mail-shutdown defect.
+
+As of 2026-10-24, the old official-workspace configuration gap is resolved and PM-668 has an active implementation run in official `nocobase/nocobase` `v3-develop` for the approved Scheduler drain contract and Jobs failure-close behavior. Independent review, CI, owner approval and an exact publisher-assigned release are still pending. nocoHR has not changed package dependencies or installed an adapter. The eventual app integration and final shutdown/build/start/restore acceptance remain separate work.
 
 ## Mechanical quality cleanup at `bf643ff`
 
-The cleanup started from the recorded full-lint baseline of **0 errors / 17 warnings** and **54 format failures**. The complete repository format check now passes. Full lint reports **0 errors / 9 warnings** and still exits 1 because the repository script sets `--max-warnings 0`; no rules, ignores or assertions were changed.
+At `bf643ff`, the cleanup started from the recorded full-lint baseline of **0 errors / 17 warnings** and **54 format failures**. Its complete repository format check passed, and its lint result was **0 errors / 9 warnings** under `--max-warnings 0`; no rules, ignores or assertions were changed. The final two warnings were resolved in the subsequent approved unit above.
 
 Eight warnings were removed with mechanical edits: three `useState` initializers became lazy initializers in the Settings departments and training reports pages, and five refs received the `Ref` suffix in employees, video lesson and questions. These preserve their initial values and ref identity. No list keys, effect lifetimes, error timing or clock-refresh behavior were changed to silence a warning.
 
@@ -32,7 +34,7 @@ The 54 original format paths all pass the formatter. They include the three `dat
 
 None of the 58 changed quality source paths belongs to the 284-path `.54 → .76` template ownership ledger; the source changes are application-owned warning cleanup and the 54 recorded formatter paths. The ledger itself remains unchanged. Three-project typecheck passes. The recruiting seed/consumer file passes **32/32** tests, and the selected exam, mail-recruiting and training seed cases pass. An initial name-filtered recruiting attempt omitted setup for its selected import case; the complete recruiting test file was then run and passed. Formatting/lint/tests perform no production requests or production writes; test-local database and synthetic fixtures are separate from production costs.
 
-This batch does not retry the shutdown probe, register the drain adapter, rerun a full build, or change dependencies, lock, compatibility gates, preflight, migration history or `.54`. The recorded close-order safety failure remains open. Full lint and current-head build/source-and-compiled startup still prevent final quality/upgrade acceptance.
+This mechanical-cleanup batch did not retry the shutdown probe, register a drain adapter, rerun a full build, or change dependencies, lock, compatibility gates, preflight, migration history or `.54`. The recorded close-order safety failure remains open. The later approved warning unit closes the lint gate; current-head build/source-and-compiled startup and final upgrade acceptance remain open.
 
 ## What changed
 
@@ -122,4 +124,4 @@ Persistent knowledge Q&A remains deferred. No used old environment exists; old-e
 
 ## Quality state before the mechanical cleanup
 
-The previous quality report recorded 17 lint warnings and 54 format failures. The cleanup result above supersedes those current-state counts. The earlier comparison against `2bfd8d1` remains historical source/toolchain evidence, not a claim that the old dependency graph was installed. The full-format gate is closed for the current worktree; the two deferred lint warnings and separate shutdown/full-acceptance gates remain open after the client follow-up.
+The previous quality report recorded 17 lint warnings and 54 format failures. The cleanup and final warning-fix results above supersede those historical counts. The earlier comparison against `2bfd8d1` remains historical source/toolchain evidence, not a claim that the old dependency graph was installed. The full-format and lint gates are closed for the verified delivery head; separate shutdown and full-acceptance gates remain open.
