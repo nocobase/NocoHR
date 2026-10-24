@@ -52,8 +52,8 @@ export async function installMailBusinessProbe(h: Harness) {
   const recruiter = app.container.resolve(recruitingMailToken);
   const entered = deferred();
   const gate = deferred();
-  const pollDone = deferred();
-  void pollDone.promise.catch(() => {});
+  const terminalDone = deferred();
+  let pollError: unknown;
   const restores: (() => void)[] = [];
   let modelCalls = 0;
   let modelActive = 0;
@@ -121,8 +121,13 @@ export async function installMailBusinessProbe(h: Harness) {
   business.poll = function (...args) {
     const result = Reflect.apply(originalPoll, this, args);
     void result.then(
-      () => pollDone.resolve(),
-      (error) => pollDone.reject(error),
+      () => log('poll.settled'),
+      (error) => {
+        pollError = error;
+        log('poll.rejected', {
+          error: error instanceof Error ? error.message : 'non-Error rejection',
+        });
+      },
     );
     return result;
   };
@@ -235,7 +240,7 @@ export async function installMailBusinessProbe(h: Harness) {
         to: 'recruiting@qiheng.test',
         subject: 'Controlled withdrawal',
         text: '我已找到工作，不再考虑这个职位。',
-        date: new Date(),
+        date: new Date(Date.now() + 2_000),
       }),
     );
   }
@@ -290,8 +295,10 @@ export async function installMailBusinessProbe(h: Harness) {
       occurrences,
       modelCalls,
       modelActive,
+      cost: cost(),
     };
     log('terminal', terminal);
+    terminalDone.resolve();
   });
   const client = await db.connection().client<{
     on(event: string, fn: (q: { sql: string }) => void): void;
@@ -317,6 +324,7 @@ export async function installMailBusinessProbe(h: Harness) {
   });
   return {
     async close() {
+      let applicationClosed = false;
       await entered.promise;
       const timer = setInterval(
         () => log('waiting', { cost: cost(), modelCalls, modelActive }),
@@ -326,13 +334,102 @@ export async function installMailBusinessProbe(h: Harness) {
       try {
         if (phase === 'before') {
           gate.resolve();
-          let pollError: unknown;
-          try {
-            await pollDone.promise;
-          } catch (error) {
-            pollError = error;
-          }
+          await terminalDone.promise;
           if (expectFailure) {
+            if (result === 'failure') {
+              const source = await db
+                .query()
+                .selectFrom('businessMailMessages')
+                .select(['id', 'threadKey'])
+                .where('mailbox', '=', 'recruiting')
+                .where('direction', '=', 'inbound')
+                .executeTakeFirstOrThrow();
+              writeFileSync(
+                path.join(inbox, 'direct-reply.eml'),
+                composeMail({
+                  from: {
+                    name: 'Controlled candidate',
+                    address: 'qinchuan@qiheng.test',
+                  },
+                  to: 'recruiting@qiheng.test',
+                  subject: `Re: [#${String(source.threadKey)}]`,
+                  text: '请问上班地点在哪里？',
+                  date: new Date(),
+                }),
+              );
+              assert.equal(
+                (await h.call(null, 'POST', '/mail/poll?mailbox=recruiting'))
+                  .status,
+                401,
+              );
+              assert.equal(
+                (
+                  await h.call(
+                    'mgr_njl',
+                    'POST',
+                    '/mail/poll?mailbox=recruiting',
+                  )
+                ).status,
+                404,
+              );
+              const manual = await h.call(
+                'recruit01',
+                'POST',
+                '/mail/poll?mailbox=recruiting',
+              );
+              assert.equal(manual.status, 500);
+              assert(
+                !JSON.stringify(manual.json).includes(
+                  'controlled-mail-model-failure',
+                ),
+              );
+              const runs = await db
+                .query()
+                .selectFrom('aiTaskRuns')
+                .select(['id', 'status', 'task', 'error', 'finishedAt'])
+                .where('task', '=', 'recruitingAssistant.mailReplyRecruiting')
+                .execute();
+              assert.equal(
+                runs.length,
+                2,
+                'Thread reply must enter the direct handler once',
+              );
+              assert(
+                runs.every(
+                  (run) =>
+                    run.status === 'failed' &&
+                    run.finishedAt &&
+                    String(run.error).includes('The execution failed.'),
+                ),
+              );
+              log('direct-reply.failed', {
+                tasks: runs,
+                httpStatus: manual.status,
+              });
+            }
+            // Already ingested messages are not automatically processed again after failure.
+            const before = modelCalls;
+            const repeated = await business.poll('recruiting');
+            assert.equal(repeated.recruiting, 0);
+            assert.equal(modelCalls, before);
+            log('poll.repeated', { counts: repeated, modelCalls });
+          }
+          log('poll.finished');
+          await h.close();
+          applicationClosed = true;
+        } else {
+          const closing = h.close();
+          setTimeout(() => gate.resolve(), 300);
+          await closing;
+          applicationClosed = true;
+        }
+        log('close.done', { cost: cost(), modelCalls, modelActive, terminal });
+        assert(
+          terminal,
+          'The real scheduled firing must publish a terminal event',
+        );
+        if (phase === 'before') {
+          if (expectFailure && pollError !== undefined) {
             assert(
               pollError instanceof AggregateError,
               'A real business failure must reject poll',
@@ -342,29 +439,12 @@ export async function installMailBusinessProbe(h: Harness) {
               pollError.errors.some(
                 (error: unknown) =>
                   error instanceof Error &&
-                  error.message.includes('controlled-mail-model-failure'),
+                  error.message.includes('The execution failed.'),
               ),
             );
             log('poll.failure', { counts: object(pollError).counts });
-            // Already ingested messages are not automatically processed again after failure.
-            const before = modelCalls;
-            const repeated = await business.poll('recruiting');
-            assert.equal(repeated.recruiting, 0);
-            assert.equal(modelCalls, before);
-            log('poll.repeated', { counts: repeated, modelCalls });
-          } else assert.equal(pollError, undefined);
-          log('poll.finished');
-          await h.close();
-        } else {
-          const closing = h.close();
-          setTimeout(() => gate.resolve(), 300);
-          await closing;
+          } else if (!expectFailure) assert.equal(pollError, undefined);
         }
-        log('close.done', { cost: cost(), modelCalls, modelActive, terminal });
-        assert(
-          terminal,
-          'The real scheduled firing must publish a terminal event',
-        );
         const tasks = terminal.tasks as ObjectView[];
         assert(
           tasks.some(
@@ -387,7 +467,7 @@ export async function installMailBusinessProbe(h: Harness) {
               .every(
                 (task) =>
                   typeof task.error === 'string' &&
-                  task.error.includes('controlled-mail-model-failure') &&
+                  task.error.includes('The execution failed.') &&
                   task.finishedAt,
               ),
           );
@@ -400,7 +480,10 @@ export async function installMailBusinessProbe(h: Harness) {
           assert.equal(drafts.length, result === 'mixed' ? 1 : 0);
           assert(
             (terminal.occurrences as ObjectView[]).some(
-              (row) => row.status === 'failed' && row.finishedAt,
+              (row) =>
+                row.status === 'failed' &&
+                row.finishedAt &&
+                row.reason === 'MAIL_PROCESSING_FAILED',
             ),
           );
           if (result === 'mixed')
@@ -427,14 +510,18 @@ export async function installMailBusinessProbe(h: Harness) {
         await h.close();
         log('close.repeated');
       } finally {
-        clearInterval(timer);
-        client.removeListener('query', onQuery);
-        unsubscribe();
-        for (const restore of restores.reverse()) restore();
-        await new Promise<void>((resolve, reject) =>
-          model.close((error) => (error ? reject(error) : resolve())),
-        );
-        log('probe.cleaned');
+        try {
+          if (!applicationClosed) await h.close();
+        } finally {
+          clearInterval(timer);
+          client.removeListener('query', onQuery);
+          unsubscribe();
+          for (const restore of restores.reverse()) restore();
+          await new Promise<void>((resolve, reject) =>
+            model.close((error) => (error ? reject(error) : resolve())),
+          );
+          log('probe.cleaned');
+        }
       }
     },
   };

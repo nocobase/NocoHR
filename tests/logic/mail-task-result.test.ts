@@ -64,6 +64,10 @@ describe('mail automation failure propagation', () => {
     'recruiting reply',
   ])('%s does not discard a failed outcome', async (entry) => {
     const deps = {
+      mail: {
+        row: vi.fn(async () => ({ status: 'received' })),
+        leaveUnmatched: vi.fn(),
+      },
       run: vi.fn(async () => ({ status: 'failed', runId: 'existing-task' })),
     };
     const message = {
@@ -89,6 +93,9 @@ describe('mail automation failure propagation', () => {
       : handler.onUnmatched;
     await expect(action(message)).rejects.toThrow('MAIL_TASK_FAILED');
     expect(deps.run).toHaveBeenCalledTimes(1);
+    expect(deps.mail.leaveUnmatched).toHaveBeenCalledTimes(
+      entry.endsWith('sort') ? 1 : 0,
+    );
   });
 });
 
@@ -142,4 +149,87 @@ describe('mail poll read failures', () => {
       MAIL_PURPOSES,
     );
   });
+});
+
+describe('mail task finalization', () => {
+  it('retains both errors when existing post-processing also fails', async () => {
+    const original = new Error('original work failure');
+    const following = new Error('existing post-processing failure');
+    const run: Parameters<typeof runMailTask>[0] = async (
+      _key,
+      _options,
+      work,
+    ) => {
+      try {
+        await work({} as AutomationRunContext);
+      } catch {
+        /* automation persists the failure */
+      }
+      return { status: 'failed', runId: 'existing-task' };
+    };
+    const reason = await runMailTask(
+      run,
+      'task',
+      options,
+      async () => {
+        throw original;
+      },
+      async () => {
+        throw following;
+      },
+    ).catch((error: unknown) => error);
+    expect(reason).toBeInstanceOf(AggregateError);
+    expect((reason as AggregateError).errors).toEqual([original, following]);
+  });
+});
+
+describe('valid sender filtering', () => {
+  it.each(['billing', 'audit'])(
+    '%s keeps an out-of-domain message skipped',
+    async (purpose) => {
+      const leaveUnmatched = vi.fn();
+      const run = vi.fn(
+        async (
+          _key: string,
+          _options: unknown,
+          work: (context: AutomationRunContext) => Promise<unknown>,
+        ) => {
+          const result = await work({
+            summarize: vi.fn(),
+          } as unknown as AutomationRunContext);
+          expect(result).toEqual({ status: 'skipped' });
+          return { status: 'skipped', runId: 'existing-task' };
+        },
+      );
+      const deps = {
+        run,
+        mail: { leaveUnmatched, row: async () => ({ status: 'unmatched' }) },
+        settings: {
+          read: async () => ({
+            value: {
+              mailboxes: {
+                [purpose]: { allowedSenderDomains: ['allowed.test'] },
+              },
+            },
+          }),
+        },
+      };
+      const handler =
+        purpose === 'billing'
+          ? createBillingMailHandler(
+              deps as unknown as Parameters<typeof createBillingMailHandler>[0],
+            ).handler
+          : createAuditMail(
+              deps as unknown as Parameters<typeof createAuditMail>[0],
+            ).handler;
+      await expect(
+        handler.onUnmatched({
+          id: 'message',
+          from: { address: 'sender@other.test' },
+        } as MailMessage),
+      ).resolves.toBeUndefined();
+      expect(leaveUnmatched).toHaveBeenCalledTimes(1);
+      expect(run).toHaveBeenCalledTimes(1);
+    },
+  );
 });

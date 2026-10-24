@@ -257,11 +257,17 @@ export function createBillingMailHandler(deps: {
         run.summarize('来信未识别为账单，已放入待归类');
         return { output: { mailId: message.id, billId: null } };
       },
+      async () => {
+        const after = await mail.row(message.id);
+        if (after.status === 'received')
+          await mail.leaveUnmatched(
+            message.id,
+            null,
+            '未自动识别，请人工归类。',
+          );
+      },
     );
     // Without an owner (or with the task switched off) the message still waits for a person.
-    const after = await mail.row(message.id);
-    if (after.status === 'received')
-      await mail.leaveUnmatched(message.id, null, '未自动识别，请人工归类。');
   }
 
   async function reply(message: MailMessage) {

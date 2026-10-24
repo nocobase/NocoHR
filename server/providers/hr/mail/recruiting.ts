@@ -608,10 +608,16 @@ export function createRecruitingMailHandler(deps: {
           return { output: { mailId: message.id, applicationId: null } };
         }
       },
+      async () => {
+        const after = await mail.row(message.id);
+        if (after.status === 'received')
+          await mail.leaveUnmatched(
+            message.id,
+            null,
+            '未自动识别，请人工归类。',
+          );
+      },
     );
-    const after = await mail.row(message.id);
-    if (after.status === 'received')
-      await mail.leaveUnmatched(message.id, null, '未自动识别，请人工归类。');
   }
 
   function replyDraft(

@@ -17,6 +17,7 @@ export async function runMailTask<T extends Record<string, unknown>>(
   work: (
     context: AutomationRunContext,
   ) => Promise<{ status?: 'succeeded' | 'skipped'; output?: T }>,
+  after?: () => Promise<void>,
 ): Promise<void> {
   let rejected: { reason: unknown } | undefined;
   const outcome = await run(key, options, async (context) => {
@@ -27,12 +28,21 @@ export async function runMailTask<T extends Record<string, unknown>>(
       throw reason;
     }
   });
-  if (
+  const failed = Boolean(
     outcome &&
     typeof outcome === 'object' &&
     'status' in outcome &&
-    outcome.status === 'failed'
-  ) {
+    outcome.status === 'failed',
+  );
+  try {
+    // Existing received-to-unmatched handling must also run after a recorded failure.
+    await after?.();
+  } catch (error) {
+    if (failed && rejected)
+      throw new AggregateError([rejected.reason, error], 'MAIL_TASK_FAILED');
+    throw error;
+  }
+  if (failed) {
     // Failure before work (for example owner authorization) has already been recorded by automation.
     throw rejected ? rejected.reason : new Error('MAIL_TASK_FAILED');
   }

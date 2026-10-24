@@ -10,7 +10,11 @@ export default class MailDependencyProbeProvider extends ServiceProvider<Applica
     this.app.container.resolve(schedulerServiceToken).defineSchedule({
       key: 'test.mail-dependency-probe',
       title: 'Controlled mail dependency probe',
-      schedule: { cron: '* * * * * *', limit: 1 },
+      schedule: {
+        cron: '* * * * * *',
+        from: new Date(Date.now() + 5_000),
+        limit: 1,
+      },
       target: { type: 'app.hr-mail-poll', config: {} },
     });
   }
