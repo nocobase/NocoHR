@@ -5,6 +5,9 @@
 // own tools), refusals (another person's data, manager tools for employees, no pay / performance / talent-review tool,
 // no confirmation tool), the draft leave request, the audit log per client and the per-minute limit.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { observeFixtureClose } from '../helpers/close-diagnostics.ts';
+import { observeSchedulerClose } from '../helpers/scheduler-close-diagnostics.ts';
+import { observeMailClose } from '../helpers/mail-close-diagnostics.ts';
 
 import {
   shift,
@@ -14,14 +17,35 @@ import {
 } from './talent-review-harness.ts';
 
 let h: Harness;
+let schedulerDiagnostics: ReturnType<typeof observeSchedulerClose>;
+let mailDiagnostics: ReturnType<typeof observeMailClose>;
 const CLIENT = 'ac-demo-claude';
 
 beforeAll(async () => {
   h = await startHarness('v4-agent-clients');
+  schedulerDiagnostics = observeSchedulerClose(
+    h.server.application,
+    'v4-agent-clients',
+  );
+  mailDiagnostics = observeMailClose(h.server.application, 'v4-agent-clients');
 }, 240_000);
 
 afterAll(async () => {
-  await h?.close();
+  try {
+    await observeFixtureClose({
+      suite: 'v4-agent-clients',
+      stage: 'application',
+      application: h?.server.application,
+      state: () => ({
+        ...schedulerDiagnostics?.snapshot(),
+        ...mailDiagnostics?.snapshot(),
+      }),
+      close: () => h?.close(),
+    });
+  } finally {
+    mailDiagnostics?.restore();
+    schedulerDiagnostics?.restore();
+  }
 });
 
 let rpcId = 0;
@@ -204,22 +228,68 @@ describe('13C 开放给外部 AI Agent', () => {
         })
       ).content.code,
     ).toBe('INVALID_ARGUMENTS');
-    const drafted = await tool(wang.secret, 'draftMyLeaveRequest', {
-      leaveType: 'annual',
-      startAt: `${friday}T00:00:00+08:00`,
-      endAt: `${shift(friday, 1)}T00:00:00+08:00`,
-      reason: '家中有事',
-    });
-    expect(drafted.isError).toBe(false);
-    const row = await (
-      await h.db()
-    )
-      .query()
-      .selectFrom('leaveRequests')
-      .select(['status', 'employeeId'])
-      .where('id', '=', String(drafted.content.id))
-      .executeTakeFirst();
-    expect(row).toMatchObject({ status: 'draft', employeeId: 'emp-wanglei' });
+    // This scenario requires a working day, independent of the demo's relative rotation.
+    // Restore the published cell even on assertion failure; the harness owns the whole database.
+    const query = (await h.db()).query();
+    const originalShift = await query
+      .selectFrom('shiftSchedules')
+      .select(['id', 'shiftId', 'publishedShiftId'])
+      .where('employeeId', '=', 'emp-wanglei')
+      .where('date', '=', friday)
+      .executeTakeFirstOrThrow();
+    try {
+      await query
+        .updateTable('shiftSchedules')
+        .set({ shiftId: null, publishedShiftId: null })
+        .where('id', '=', originalShift.id)
+        .execute();
+      const restDay = await tool(wang.secret, 'draftMyLeaveRequest', {
+        leaveType: 'annual',
+        startAt: `${friday}T00:00:00+08:00`,
+        endAt: `${shift(friday, 1)}T00:00:00+08:00`,
+        reason: '休息日对照',
+      });
+      expect(restDay.isError).toBe(true);
+      expect(restDay.content.code).toBe('NO_ELIGIBLE_LEAVE_DAYS');
+      expect(await leaves()).toBe(before);
+      await query
+        .updateTable('shiftSchedules')
+        .set({ shiftId: 'shift-mc-early', publishedShiftId: 'shift-mc-early' })
+        .where('id', '=', originalShift.id)
+        .execute();
+      const drafted = await tool(wang.secret, 'draftMyLeaveRequest', {
+        leaveType: 'annual',
+        startAt: `${friday}T00:00:00+08:00`,
+        endAt: `${shift(friday, 1)}T00:00:00+08:00`,
+        reason: '家中有事',
+      });
+      expect(drafted.isError).toBe(false);
+      const row = await (
+        await h.db()
+      )
+        .query()
+        .selectFrom('leaveRequests')
+        .select(['status', 'employeeId'])
+        .where('id', '=', String(drafted.content.id))
+        .executeTakeFirst();
+      expect(row).toMatchObject({ status: 'draft', employeeId: 'emp-wanglei' });
+    } finally {
+      await query
+        .updateTable('shiftSchedules')
+        .set({
+          shiftId: originalShift.shiftId,
+          publishedShiftId: originalShift.publishedShiftId,
+        })
+        .where('id', '=', originalShift.id)
+        .execute();
+    }
+    expect(
+      await query
+        .selectFrom('shiftSchedules')
+        .select(['id', 'shiftId', 'publishedShiftId'])
+        .where('id', '=', originalShift.id)
+        .executeTakeFirstOrThrow(),
+    ).toEqual(originalShift);
   });
 
   it('hr01 sees every call per client; a revoked token stops at once; the per-minute limit refuses', async () => {

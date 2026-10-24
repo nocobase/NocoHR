@@ -2,6 +2,10 @@
 
 The upgrade translation, notification route, test hosts and nine client warning fixes are closed, including independent UTC and ten-category nonempty report verification at `47f38cc`. Full lint/format and all three type projects passed for that source. Historical failure logs below are preserved; they are not outstanding quality warnings. Current artifact/HTTP/recovery/full-suite results are in the [application-only acceptance unit](app-only-acceptance.md). Complete background shutdown remains a separate external-contract gap. The PR remains draft; `.54`, preflight and gates remain unchanged.
 
+## Leave-fixture and same-window shutdown follow-up
+
+The [test-only follow-up](leave-fixture-close-diagnostic.md) fixes synthetic shift eligibility without changing leave rules or historical seeds. The affected API regressions pass, and their passive observers remain in place. A controlled official mail-target replay captures Scheduler backend waiting on the business poll while Mail has already closed; its original 30-second failure is retained. A narrow application plugin-order proposal is reported for separate review, not installed. The complete reconciliation/derived-work public drain gap and historical full-run failures remain open; no official package or external CI work resumes.
+
 ## Client warning follow-up after `fd0f071`
 
 All nine warnings from the `fd0f071` snapshot are now addressed without rule suppression. The seven reviewed fixes cover stable video reporting, three profile draft row identities, explicit mailbox async feedback, practice display identity and blank-answer draft identity. The last two implement the local-midnight/visibility calendar refresh and readonly training-report row keys described in the [unit record](quality-warning-unit.md). The historical nine-warning table below describes the earlier snapshot only. At this delivery head, full `pnpm lint` reports zero errors and zero warnings; shutdown acceptance remains separately blocked. The updated record includes targeted regressions and English real-route screenshots.

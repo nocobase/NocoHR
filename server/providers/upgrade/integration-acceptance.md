@@ -2,6 +2,10 @@
 
 Current scope is **nocoHR application only**, following the owner's 2026-10-24 08:59 decision. Quality fixes and independent UTC/report coverage review are closed at `47f38cc`; the old warnings and format backlog are historical. The [application-only acceptance unit](app-only-acceptance.md) records fresh current-source install/build, real-listener HTTP shutdown and isolated recovery results separately from the still-missing public background-drain contract. No production shutdown adapter or package change is installed. The PR stays draft, `.54`, preflight and closed gates stay unchanged.
 
+## Leave-fixture and same-window shutdown follow-up
+
+The [test-only follow-up](leave-fixture-close-diagnostic.md) fixes synthetic shift eligibility without changing leave rules or historical seeds. The affected API regressions pass, and their passive observers remain in place. A controlled official mail-target replay captures Scheduler backend waiting on the business poll while Mail has already closed; its original 30-second failure is retained. A narrow application plugin-order proposal is reported for separate review, not installed. The complete reconciliation/derived-work public drain gap and historical full-run failures remain open; no official package or external CI work resumes.
+
 ## Client warning follow-up after `fd0f071`
 
 The [client warning unit](quality-warning-unit.md) now implements all nine reviewed warning fixes without suppression. The final two add local-midnight/visibility refresh for the sessions calendar and a readonly category-prefixed `rowKey` to ten authorized training detail lists. Full lint and format pass at this delivery head; targeted component/service regressions, full three-project typecheck and real English source-page screenshots pass. The earlier nine-warning snapshot below is historical; shutdown safety and current-head build/compiled startup integration acceptance remain open. No full-suite rerun is used to hide the known shutdown failure.

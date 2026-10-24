@@ -2,6 +2,10 @@
 
 The Jobs-only early-drain adapter is **not installed**. Its reconciliation concurrency prerequisite fails: an official reconciliation inspection can remain active after the public Schedule executor has drained and application dependency cleanup has run. The accepted mail-close ordering diagnosis remains valid, but executor shutdown alone does not provide a complete Scheduler quiescence boundary.
 
+## Leave-fixture and same-window shutdown follow-up
+
+The [test-only follow-up](leave-fixture-close-diagnostic.md) fixes synthetic shift eligibility without changing leave rules or historical seeds. The affected API regressions pass, and their passive observers remain in place. A controlled official mail-target replay captures Scheduler backend waiting on the business poll while Mail has already closed; its original 30-second failure is retained. A narrow application plugin-order proposal is reported for separate review, not installed. The complete reconciliation/derived-work public drain gap and historical full-run failures remain open; no official package or external CI work resumes.
+
 ## Current application-only scope (2026-10-24)
 
 The owner withdrew this task's external package implementation, compatibility, publishing and CI work at 08:59. Current published fixed inputs remain Scheduler `.19` / Jobs `.3` / Server `3 beta.2`; no new package is consumed. The public Scheduler service lacks a boundary that stops new reconciliation and jointly awaits accepted inspection, execution, state persistence, event delivery and completion reports. This is a specific external dependency for overlapping background work, not a reason to postpone independent application checks.
