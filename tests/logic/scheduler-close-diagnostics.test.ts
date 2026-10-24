@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Application } from '@nocobase/app-server/application';
 import { observeSchedulerClose } from '../helpers/scheduler-close-diagnostics.ts';
+import { fixtureProviderStates } from '../helpers/close-diagnostics.ts';
 
 function fixture() {
   const events: Record<string, unknown>[] = [];
@@ -127,5 +128,28 @@ describe('scheduler close observer', () => {
     } finally {
       observer.restore();
     }
+  });
+});
+
+describe('fixture dependency state snapshots', () => {
+  it('can include released dependencies without changing provider states', () => {
+    const entries = [
+      { provider: { name: 'mail' }, state: 'ready' },
+      { provider: { name: 'agents' }, state: 'shutdown' },
+    ];
+    const application = {
+      providerRegistry: { providers: entries },
+    } as unknown as Application;
+    expect(fixtureProviderStates(application)).toEqual([
+      { name: 'mail', state: 'ready' },
+    ]);
+    const snapshot = fixtureProviderStates(application, true);
+    expect(snapshot).toEqual([
+      { name: 'mail', state: 'ready' },
+      { name: 'agents', state: 'shutdown' },
+    ]);
+    snapshot[0]!.state = 'observation-only';
+    expect(entries[0]!.state).toBe('ready');
+    expect(fixtureProviderStates()).toEqual([]);
   });
 });

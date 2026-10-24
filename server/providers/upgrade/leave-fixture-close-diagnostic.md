@@ -23,7 +23,11 @@ The registry closes providers sequentially in reverse registration order. In the
 
 The initial probe used a nonexistent Provider export and failed before any test/application started. Its log is retained as probe calibration, not a product failure. The corrected probe and all complete failing windows are included with the delivery evidence.
 
-## Minimum next lifecycle proposal — not installed
+## Minimum next lifecycle proposal — superseded prerequisite result
+
+The subsequent [nonempty business prerequisite](mail-business-dependency-unit.md) rejects the two-plugin swap for installation: Mail stays live but Agents closes before a real recruiting reply can generate its draft. The empty-inbox pass below remains historical evidence for the synchronization edge only. No production order change is installed.
+
+### Earlier proposal — not installed
 
 For this specific Mail dependency edge, evaluate registering Mail before Scheduler in `server/plugins.ts`, so ordinary reverse cleanup waits for the Scheduler executor while Mail is still available. A temporary copy changing only that plugin registration order passes the same late-entry replay: **8 cases**, natural close in **2.85 seconds**, exit 0; all three observed new syncs complete before cleanup. The gate, one-shot definition and all eight cases are identical. This is an application composition change requiring a separate scoped implementation and independent review; shared production source is unchanged here.
 

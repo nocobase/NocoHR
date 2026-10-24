@@ -1,0 +1,360 @@
+import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { createServer } from 'node:http';
+import {
+  mailServiceToken as nativeMailToken,
+  type MailConfig,
+} from '@nocobase/app-plugin-mail/server';
+import { agentsToken } from '@nocobase/app-plugin-agents/server/tokens';
+import { jobExecutorServiceToken } from '@nocobase/app-server/jobs';
+import { composeMail } from '../../database/seed-data/demo-mail.ts';
+import {
+  automationServiceToken,
+  mailServiceToken,
+  recruitingMailToken,
+} from '../../server/providers/hr/tokens.ts';
+import { fixtureProviderStates } from '../helpers/close-diagnostics.ts';
+import type { Harness } from '../logic/talent-review-harness.ts';
+
+type ObjectView = Record<string, unknown>;
+function deferred() {
+  let resolve!: () => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<void>((done, failed) => {
+    resolve = done;
+    reject = failed;
+  });
+  return { promise, resolve, reject };
+}
+const object = (value: unknown): ObjectView =>
+  value !== null && typeof value === 'object' ? (value as ObjectView) : {};
+
+/** Causal intervention for an isolated copy; not imported by normal tests or production. */
+export async function installMailBusinessProbe(h: Harness) {
+  assert.equal(process.env.NODE_ENV, 'test');
+  const phase = process.env.MAIL_PROBE_PHASE ?? 'before';
+  assert(['before', 'late'].includes(phase));
+  const app = h.server.application;
+  const config = app.config.get<MailConfig>('mail');
+  assert(config, 'Mail configuration must exist');
+  assert(Object.values(config.providers).length > 0);
+  assert(
+    Object.values(config.providers).every((p) => p.type === 'local-files'),
+  );
+  const native = app.container.resolve(nativeMailToken);
+  const business = app.container.resolve(mailServiceToken);
+  const online = app.container.resolve(agentsToken).onlineAgent;
+  const automation = app.container.resolve(automationServiceToken);
+  const recruiter = app.container.resolve(recruitingMailToken);
+  const entered = deferred();
+  const gate = deferred();
+  const pollDone = deferred();
+  const restores: (() => void)[] = [];
+  let modelCalls = 0;
+  let modelActive = 0;
+  let first = true;
+  const log = (event: string, details: ObjectView = {}) => {
+    process.stderr.write(
+      `MAIL_BUSINESS ${JSON.stringify({ event, phase, pid: process.pid, t: performance.now(), providers: fixtureProviderStates(app, true), ...details })}\n`,
+    );
+  };
+  function observe(target: object, key: string, label: string) {
+    const original = Reflect.get(target, key);
+    assert.equal(typeof original, 'function');
+    const observed = function (this: unknown, ...args: unknown[]) {
+      const metadata =
+        label === 'automation'
+          ? { task: typeof args[0] === 'string' ? args[0] : undefined }
+          : {};
+      log(`${label}.begin`, metadata);
+      try {
+        const result = Reflect.apply(original, this, args) as Promise<unknown>;
+        void result.then(
+          (value) =>
+            log(`${label}.done`, { ...metadata, status: object(value).status }),
+          (error: unknown) =>
+            log(`${label}.failed`, {
+              ...metadata,
+              error:
+                error instanceof Error ? error.message : 'Non-Error rejection',
+            }),
+        );
+        return result;
+      } catch (error) {
+        log(`${label}.threw`, {
+          ...metadata,
+          error: error instanceof Error ? error.message : 'Non-Error throw',
+        });
+        throw error;
+      }
+    };
+    Object.assign(target, { [key]: observed });
+    restores.push(() => {
+      if (Reflect.get(target, key) === observed)
+        Object.assign(target, { [key]: original });
+    });
+  }
+  observe(online, 'background', 'native.background');
+  observe(automation, 'run', 'automation');
+  observe(recruiter.handler, 'onUnmatched', 'business.handler');
+  observe(recruiter.handler, 'onReply', 'business.reply');
+  const originalSync = native.startSync;
+  native.startSync = async function (...args) {
+    if (first) {
+      first = false;
+      log('sync.gate.enter');
+      entered.resolve();
+      await gate.promise;
+      log('sync.gate.release');
+    }
+    return Reflect.apply(originalSync, this, args);
+  };
+  restores.push(() => {
+    native.startSync = originalSync;
+  });
+  const originalPoll = business.poll;
+  business.poll = function (...args) {
+    const result = Reflect.apply(originalPoll, this, args);
+    void result.then(
+      () => pollDone.resolve(),
+      (error) => pollDone.reject(error),
+    );
+    return result;
+  };
+  restores.push(() => {
+    business.poll = originalPoll;
+  });
+
+  const model = createServer(async (request, response) => {
+    modelActive += 1;
+    modelCalls += 1;
+    response.once('close', () => {
+      modelActive -= 1;
+    });
+    let raw = '';
+    for await (const part of request) raw += part;
+    const input = JSON.parse(raw) as { stream?: boolean };
+    log('model.request', { modelCalls });
+    const message = {
+      role: 'assistant',
+      content: JSON.stringify({ answer: '工作地点是成都工厂。', open: [] }),
+    };
+    if (input.stream) {
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      for (const [delta, finish_reason] of [
+        [message, null],
+        [{}, 'stop'],
+      ] as const)
+        response.write(
+          `data: ${JSON.stringify({ id: 'controlled', object: 'chat.completion.chunk', created: 1, model: 'fixture', choices: [{ index: 0, delta, finish_reason }] })}\n\n`,
+        );
+      response.end('data: [DONE]\n\n');
+    } else {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          id: 'controlled',
+          object: 'chat.completion',
+          created: 1,
+          model: 'fixture',
+          choices: [{ index: 0, message, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 2, completion_tokens: 3 },
+        }),
+      );
+    }
+  });
+  await new Promise<void>((resolve) => model.listen(0, '127.0.0.1', resolve));
+  const address = model.address();
+  assert(address && typeof address === 'object');
+  await app.container.resolve(agentsToken).models.services.create({
+    title: 'Controlled local dependency fixture',
+    provider: 'openai-compatible',
+    apiKey: 'synthetic-local-only',
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    models: [{ value: 'fixture' }],
+  });
+  assert(
+    (await app.container.resolve(agentsToken).models.services.defaults())
+      .effectiveChat,
+  );
+  const db = await h.db();
+  // Isolated seed records only: make the known synthetic candidate's application active.
+  await db
+    .query()
+    .updateTable('applications')
+    .set({ stage: 'screening' })
+    .where('id', '=', 'app-pool-qinchuan')
+    .execute();
+  assert(
+    await db
+      .query()
+      .selectFrom('applications')
+      .select('id')
+      .where('id', '=', 'app-pool-qinchuan')
+      .executeTakeFirst(),
+  );
+  const inbox = path.join(
+    String(object(config.providers.local).directory),
+    'recruiting@qiheng.test',
+    'inbox',
+  );
+  mkdirSync(inbox, { recursive: true });
+  writeFileSync(
+    path.join(inbox, 'mail-dependency-question.eml'),
+    composeMail({
+      from: { name: 'Controlled candidate', address: 'qinchuan@qiheng.test' },
+      to: 'recruiting@qiheng.test',
+      subject: 'Controlled dependency question',
+      text: '请问上班地点在哪里？',
+      date: new Date(),
+    }),
+  );
+  const schedule = await db
+    .query()
+    .selectFrom('scheduleDefinitions')
+    .select('id')
+    .where('key', '=', 'test.mail-dependency-probe')
+    .executeTakeFirstOrThrow();
+  const executor = app.container
+    .resolve(jobExecutorServiceToken)
+    .getScheduleExecutor(
+      '@nocobase/app-plugin-scheduler',
+      app.config.get<{ jobs?: string }>('scheduler')?.jobs,
+    );
+  let terminal: ObjectView | undefined;
+  const unsubscribe = executor.subscribe(async (event) => {
+    if (event.jobName !== String(schedule.id) || event.name === 'ScheduleStart')
+      return;
+    const tasks = await db
+      .query()
+      .selectFrom('aiTaskRuns')
+      .select([
+        'id',
+        'task',
+        'status',
+        'error',
+        'finishedAt',
+        'conversationSessionId',
+      ])
+      .where('task', 'in', [
+        'recruitingAssistant.mailSortRecruiting',
+        'recruitingAssistant.mailReplyRecruiting',
+      ])
+      .execute();
+    const messages = await db
+      .query()
+      .selectFrom('businessMailMessages')
+      .select(['id', 'status', 'direction', 'draftOf', 'refType', 'refId'])
+      .where('mailbox', '=', 'recruiting')
+      .execute();
+    const occurrences = await db
+      .query()
+      .selectFrom('scheduleOccurrences')
+      .select(['id', 'status', 'finishedAt'])
+      .where('scheduleId', '=', String(schedule.id))
+      .execute();
+    terminal = {
+      event: event.name,
+      tasks,
+      messages,
+      occurrences,
+      modelCalls,
+      modelActive,
+    };
+    log('terminal', terminal);
+  });
+  const client = await db.connection().client<{
+    on(event: string, fn: (q: { sql: string }) => void): void;
+    removeListener(event: string, fn: (q: { sql: string }) => void): void;
+  }>();
+  const sql: string[] = [];
+  const onQuery = ({ sql: text }: { sql: string }) => sql.push(text);
+  client.on('query', onQuery);
+  const cost = () =>
+    Object.fromEntries(
+      ['select', 'insert', 'update', 'delete', 'begin', 'commit'].map(
+        (kind) => [
+          kind,
+          sql.filter((q) => new RegExp(`^${kind}\\b`, 'i').test(q)).length,
+        ],
+      ),
+    );
+  log('fixture.ready', {
+    schedulerJobs:
+      app.config.get<{ jobs?: string }>('scheduler')?.jobs ??
+      '(default memory)',
+    modelConfigured: true,
+  });
+  return {
+    async close() {
+      await entered.promise;
+      const timer = setInterval(
+        () => log('waiting', { cost: cost(), modelCalls, modelActive }),
+        5000,
+      );
+      timer.unref();
+      try {
+        if (phase === 'before') {
+          gate.resolve();
+          await pollDone.promise;
+          log('poll.finished');
+          await h.close();
+        } else {
+          const closing = h.close();
+          setTimeout(() => gate.resolve(), 300);
+          await closing;
+        }
+        log('close.done', { cost: cost(), modelCalls, modelActive, terminal });
+        assert(
+          terminal,
+          'The real scheduled firing must publish a terminal event',
+        );
+        const tasks = terminal.tasks as ObjectView[];
+        assert(
+          tasks.some(
+            (task) => task.task === 'recruitingAssistant.mailReplyRecruiting',
+          ),
+          'A nonempty message must enter the real recruiting reply task',
+        );
+        assert(
+          tasks.every((task) => task.status === 'succeeded'),
+          'Mail business tasks must succeed before dependencies are released',
+        );
+        assert(
+          (terminal.messages as ObjectView[]).some(
+            (message) => message.status === 'draft',
+          ),
+          'The real handler must save a reply draft',
+        );
+        const reply = tasks.find(
+          (task) => task.task === 'recruitingAssistant.mailReplyRecruiting',
+        );
+        assert.equal(
+          typeof reply?.conversationSessionId,
+          'string',
+          'The successful reply must retain its native session',
+        );
+        assert.equal(terminal.event, 'ScheduleEnd');
+        assert(
+          (terminal.occurrences as ObjectView[]).some(
+            (row) => row.status === 'succeeded' && row.finishedAt,
+          ),
+        );
+        assert(modelCalls > 0, 'The real native model connection must execute');
+        assert.equal(modelActive, 0);
+        await h.close();
+        log('close.repeated');
+      } finally {
+        clearInterval(timer);
+        client.removeListener('query', onQuery);
+        unsubscribe();
+        for (const restore of restores.reverse()) restore();
+        await new Promise<void>((resolve, reject) =>
+          model.close((error) => (error ? reject(error) : resolve())),
+        );
+        log('probe.cleaned');
+      }
+    },
+  };
+}

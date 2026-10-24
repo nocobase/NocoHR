@@ -2,6 +2,10 @@
 
 The Jobs-only early-drain adapter is **not installed**. Its reconciliation concurrency prerequisite fails: an official reconciliation inspection can remain active after the public Schedule executor has drained and application dependency cleanup has run. The accepted mail-close ordering diagnosis remains valid, but executor shutdown alone does not provide a complete Scheduler quiescence boundary.
 
+## Nonempty mail prerequisite: candidate rejected
+
+The [nonempty dependency unit](mail-business-dependency-unit.md) finds that exchanging only Mail/Scheduler lets a real recruiting message enter native generation after Agents has closed. The reply task fails and no draft is stored, although the occurrence succeeds and application cleanup completes. The candidate is not installed; further candidate artifact/lifecycle checks stop at this failed prerequisite. Prior leave and real-HTTP evidence is independently accepted. Production source, fixed dependencies, history and safety gates remain unchanged; full background shutdown and the original complete-run failures remain open.
+
 ## Leave-fixture and same-window shutdown follow-up
 
 The [test-only follow-up](leave-fixture-close-diagnostic.md) fixes synthetic shift eligibility without changing leave rules or historical seeds. The affected API regressions pass, and their passive observers remain in place. A controlled official mail-target replay captures Scheduler backend waiting on the business poll while Mail has already closed; its original 30-second failure is retained. A narrow application plugin-order proposal is reported for separate review, not installed. The complete reconciliation/derived-work public drain gap and historical full-run failures remain open; no official package or external CI work resumes.

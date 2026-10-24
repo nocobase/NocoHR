@@ -6,13 +6,16 @@ interface ProviderState {
 }
 
 /** Read-only diagnostics for the fixed Server version; never drive shutdown from these states. */
-function providerStates(application?: Application) {
+export function fixtureProviderStates(
+  application?: Application,
+  includeClosed = false,
+) {
   const registry = (
     application as unknown as
       { providerRegistry?: { providers: ProviderState[] } } | undefined
   )?.providerRegistry;
   return (registry?.providers ?? [])
-    .filter((entry) => entry.state !== 'shutdown')
+    .filter((entry) => includeClosed || entry.state !== 'shutdown')
     .map(({ provider, state }) => ({ name: provider.name, state }));
 }
 
@@ -40,7 +43,7 @@ export async function observeFixtureClose({
         event,
         pid: process.pid,
         elapsedMs: Math.round(performance.now() - started),
-        providers: providerStates(application),
+        providers: fixtureProviderStates(application),
         resources: process.getActiveResourcesInfo(),
         ...state(),
       })}\n`,

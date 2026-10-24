@@ -2,6 +2,10 @@
 
 Current scope is **nocoHR application only**, following the owner's 2026-10-24 08:59 decision. Quality fixes and independent UTC/report coverage review are closed at `47f38cc`; the old warnings and format backlog are historical. The [application-only acceptance unit](app-only-acceptance.md) records fresh current-source install/build, real-listener HTTP shutdown and isolated recovery results separately from the still-missing public background-drain contract. No production shutdown adapter or package change is installed. The PR stays draft, `.54`, preflight and closed gates stay unchanged.
 
+## Nonempty mail prerequisite: candidate rejected
+
+The [nonempty dependency unit](mail-business-dependency-unit.md) finds that exchanging only Mail/Scheduler lets a real recruiting message enter native generation after Agents has closed. The reply task fails and no draft is stored, although the occurrence succeeds and application cleanup completes. The candidate is not installed; further candidate artifact/lifecycle checks stop at this failed prerequisite. Prior leave and real-HTTP evidence is independently accepted. Production source, fixed dependencies, history and safety gates remain unchanged; full background shutdown and the original complete-run failures remain open.
+
 ## Leave-fixture and same-window shutdown follow-up
 
 The [test-only follow-up](leave-fixture-close-diagnostic.md) fixes synthetic shift eligibility without changing leave rules or historical seeds. The affected API regressions pass, and their passive observers remain in place. A controlled official mail-target replay captures Scheduler backend waiting on the business poll while Mail has already closed; its original 30-second failure is retained. A narrow application plugin-order proposal is reported for separate review, not installed. The complete reconciliation/derived-work public drain gap and historical full-run failures remain open; no official package or external CI work resumes.
