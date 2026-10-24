@@ -39,19 +39,21 @@ afterEach(() => {
 it.each([
   {
     label: 'spring-forward midnight',
-    start: new Date(2026, 2, 8),
-    next: new Date(2026, 2, 9),
+    start: () => new Date(2026, 2, 8),
+    next: () => new Date(2026, 2, 9),
     elapsed: 23 * 60 * 60 * 1000,
   },
   {
     label: 'fall-back midnight',
-    start: new Date(2026, 10, 1),
-    next: new Date(2026, 10, 2),
+    start: () => new Date(2026, 10, 1),
+    next: () => new Date(2026, 10, 2),
     elapsed: 25 * 60 * 60 * 1000,
   },
 ])(
   'refreshes the highlighted day at $label',
-  async ({ start, next, elapsed }) => {
+  async ({ start: makeStart, next: makeNext, elapsed }) => {
+    const start = makeStart();
+    const next = makeNext();
     expect(next.getTime() - start.getTime()).toBe(elapsed);
     vi.setSystemTime(start);
     const timeout = vi.spyOn(window, 'setTimeout');

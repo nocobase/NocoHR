@@ -765,7 +765,7 @@
       {
         "path": "tests/components/sessions-calendar.test.tsx",
         "before": null,
-        "after": "3b5ce7a36da9cc5a09ccac9c0acd40fdd19d0be43d3d2f3cbd75114157d5864e"
+        "after": "4b90f77aea8eb832d01aa84a2586a79a9e2d27458005c2458a276f2b29f86578"
       },
       {
         "path": "tests/components/training-report-row-keys.test.tsx",
@@ -775,12 +775,12 @@
       {
         "path": "tests/logic/training-acceptance.test.ts",
         "before": "572809e264c76c34529dc4a9e1b641c8c0f9ac59fe59ff710f1e947f31312849",
-        "after": "1e106fb3eff56ddc83b9cc370bf1d451e9b6a9e9927de72836c550f8776b2b70"
+        "after": "d2e968420dd9051279eeca78cb6307c1bbedd8c6dc4a61875ac561eb49a549fa"
       },
       {
         "path": "server/providers/upgrade/quality-warning-unit.md",
         "before": "9109231898d669ea5d408d065caafeb14a72847ef68557e0d8a4ba7b1f6f180c",
-        "after": "84c65a3af87b461e04de3b81137cdbf733f20cb6dcbf42ea2944940f77936d28"
+        "after": "5f922a6d2073f41e2481949af1899178f754905d0f9400f369bde8dc4bd2c1e6"
       },
       {
         "path": "server/providers/upgrade/quality-closure.md",
@@ -816,5 +816,31 @@
     "persistentSchemaOrDataChanges": false,
     "additionalQueryCount": 0,
     "ledgerSourceIntersections": []
+  },
+  "finalReviewCorrections": {
+    "baseline": "5ba07ad",
+    "scope": "Make DST fixtures timezone-portable and exercise non-empty path/practice report projections",
+    "entries": [
+      {
+        "path": "tests/components/sessions-calendar.test.tsx",
+        "before": "3b5ce7a36da9cc5a09ccac9c0acd40fdd19d0be43d3d2f3cbd75114157d5864e",
+        "after": "4b90f77aea8eb832d01aa84a2586a79a9e2d27458005c2458a276f2b29f86578"
+      },
+      {
+        "path": "tests/logic/training-acceptance.test.ts",
+        "before": "1e106fb3eff56ddc83b9cc370bf1d451e9b6a9e9927de72836c550f8776b2b70",
+        "after": "d2e968420dd9051279eeca78cb6307c1bbedd8c6dc4a61875ac561eb49a549fa"
+      },
+      {
+        "path": "server/providers/upgrade/quality-warning-unit.md",
+        "before": "84c65a3af87b461e04de3b81137cdbf733f20cb6dcbf42ea2944940f77936d28",
+        "after": "5f922a6d2073f41e2481949af1899178f754905d0f9400f369bde8dc4bd2c1e6"
+      }
+    ],
+    "productionSourcesChanged": false,
+    "pageEvidenceReused": [
+      "server/providers/upgrade/evidence/quality-warning-final/sessions-calendar-en.png",
+      "server/providers/upgrade/evidence/quality-warning-final/training-report-details-en.png"
+    ]
   }
 }
