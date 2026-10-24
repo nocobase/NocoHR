@@ -21,7 +21,7 @@ Audit pack confirmation now guarantees only that the pack was built. Billing's p
 
 ## Costs
 
-The runtime diff adds **zero SQL, writes, transactions, locks, model calls or HTTP requests** per pack action or billing callback. It only changes a translation and consumes the already-returned task outcome. This is incremental source analysis, not a claim that the original operation costs nothing. Existing skipped/duplicate task rows and the open-draft replacement DELETE remain.
+The runtime diff adds **zero SQL, writes, transactions, locks, model calls or HTTP requests** per pack action or billing callback. It only changes a translation and consumes the already-returned task outcome. This is incremental database/request analysis, not a claim that the original operation costs nothing. The existing background catch now emits its failure warning for a failed billing callback; log-sink I/O was not separately measured. Existing skipped/duplicate task rows and the open-draft replacement DELETE remain.
 
 Measured operation windows from the final service run:
 
