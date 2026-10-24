@@ -3,16 +3,19 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { loggingToken } from '@nocobase/app-server/logging';
 import { authorizationToken } from '@nocobase/app-plugin-authorization/server';
 import { composeMail } from '../../database/seed-data/demo-mail.ts';
 import { scopeForUser } from '../../server/providers/hr/authorize.ts';
 import { MAIL_REPLY_AUDIT } from '../../server/providers/hr/mail/audit.ts';
+import { BILL_REVIEW } from '../../server/providers/hr/payroll/assistant.ts';
 import { MAIL_REPLY_BILLING } from '../../server/providers/hr/mail/billing.ts';
 import {
   auditMailToken,
   automationServiceToken,
   billingMailToken,
   mailServiceToken,
+  payrollServicesToken,
 } from '../../server/providers/hr/tokens.ts';
 import { startHarness, type Harness } from './talent-review-harness.ts';
 
@@ -62,7 +65,7 @@ async function measure<T>(label: string, work: () => Promise<T>): Promise<T> {
 async function configure(key: string, enabled: boolean) {
   const container = h.server.application.container;
   const userId = await h.userId(
-    key === MAIL_REPLY_BILLING ? 'payroll01' : 'hr01',
+    key === MAIL_REPLY_AUDIT ? 'hr01' : 'payroll01',
   );
   const actor = {
     userId,
@@ -362,3 +365,93 @@ it('a bill without source mail legitimately skips drafting without a new task', 
     automation.mockRestore();
   }
 });
+
+it.each(['failure', 'partial', 'success'] as const)(
+  'registered bill review reaches the existing background catch with %s drafting',
+  async (mode) => {
+    const id = await bill();
+    await configure(BILL_REVIEW, true);
+    await configure(MAIL_REPLY_BILLING, true);
+    const container = h.server.application.container;
+    const payroll = container.resolve(payrollServicesToken);
+    const billing = container.resolve(billingMailToken);
+    const mail = container.resolve(mailServiceToken);
+    const original = new Error(`controlled background billing ${mode}`);
+    const draftReply = mail.draftReply.bind(mail);
+    const draft = vi.spyOn(mail, 'draftReply');
+    if (mode === 'failure') draft.mockRejectedValueOnce(original);
+    if (mode === 'partial')
+      draft.mockImplementationOnce(async (input) => {
+        await draftReply(input);
+        throw original;
+      });
+    // Call-through observers on public instances; no replacement of the callback, task or catch.
+    const callback = vi.spyOn(billing, 'draftForBill');
+    const warning = vi.spyOn(
+      container.resolve(loggingToken).getLogger('hr'),
+      'warn',
+    );
+    try {
+      await measure(`bill review background ${mode}`, async () => {
+        const outcome = await payroll.assistant.review(
+          id,
+          'controlled-completion-upload',
+        );
+        expect(outcome.status).toBe('succeeded');
+        await vi.waitFor(() =>
+          expect(callback).toHaveBeenCalledExactlyOnceWith(id),
+        );
+        const result = await (
+          callback.mock.results[0]!.value as Promise<void>
+        ).catch((reason: unknown) => reason);
+        if (mode === 'success') expect(result).toBeUndefined();
+        else expect(result).toBe(original);
+        const ownWarnings = warning.mock.calls.filter(
+          ([fields]) =>
+            fields &&
+            typeof fields === 'object' &&
+            'automation' in fields &&
+            fields.automation === 'hrAssistant.mailReplyBilling',
+        );
+        if (mode === 'success') expect(ownWarnings).toHaveLength(0);
+        else
+          expect(ownWarnings).toEqual([
+            [
+              { error: original, automation: 'hrAssistant.mailReplyBilling' },
+              'HR automation failed',
+            ],
+          ]);
+      });
+      const before = await drafts(id);
+      expect(before).toHaveLength(mode === 'failure' ? 0 : 1);
+      const reply = (await runs(MAIL_REPLY_BILLING, id))[0]!;
+      expect(reply.status).toBe(mode === 'success' ? 'succeeded' : 'failed');
+      expect(reply.finishedAt).toBeTruthy();
+      if (mode !== 'success')
+        expect(String(reply.error)).toContain(original.message);
+      expect((await runs(BILL_REVIEW, id))[0]!.status).toBe('succeeded');
+      expect(
+        (
+          await (
+            await h.db()
+          )
+            .query()
+            .selectFrom('laborVendorBills')
+            .select(['aiNotes'])
+            .where('id', '=', id)
+            .executeTakeFirstOrThrow()
+        ).aiNotes,
+      ).toBe('Existing reconciled notes');
+      await payroll.assistant.review(id, 'controlled-completion-upload');
+      expect(callback).toHaveBeenCalledTimes(1);
+      expect(draft).toHaveBeenCalledTimes(1);
+      expect((await drafts(id)).map((row) => row.id)).toEqual(
+        before.map((row) => row.id),
+      );
+    } finally {
+      draft.mockRestore();
+      callback.mockRestore();
+      warning.mockRestore();
+    }
+  },
+);

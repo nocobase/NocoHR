@@ -9,6 +9,10 @@ Audit pack confirmation now guarantees only that the pack was built. Billing's p
 - Billing's reconciled notification and saved notes describe reconciliation, not delivery of a reply. They are already truthful and are retained. Draft creation does not send mail. Missing source mail, disabled tasks and consumed dedupe keys stay non-failing. Repeating the same consumed trigger does not recreate a draft, including after a recorded failure.
 - Rebuilding an audit pack explicitly is existing supported behavior: a new pack ID starts a new reply trigger. This repair does not make explicit rebuilds idempotent. The regression replays the exact existing automation trigger instead, and verifies no replacement draft or pack. There is no new storage, authorization, dedupe or retry policy.
 
+## Independent verification and current artifact follow-up
+
+Independent verification at `50cad3c` passes all 51 related cases and closes the non-poll feedback findings. The [current integration record](current-integration-checks.md) supplies the subsequent current-source build/entry checks and three additional real background-catch bridge cases. Its single complete suite passes all 2022 assertions but retains an organization-close hook timeout, exit 1. The earlier artifact-reuse statements below describe this unit's original delivery, not the later current build.
+
 ## Verification
 
 - Before repair: actual English and Chinese component actions display the overbroad toast. Real billing failure and partial-persistence cases resolve instead of rejecting (two service failures). These are separate from test calibration failures retained in the delivery archive.
