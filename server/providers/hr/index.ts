@@ -1,3 +1,4 @@
+import { MailPollError } from './mail/task-result.js';
 import { agentsToken } from '@nocobase/app-plugin-agents/server/tokens';
 import type { Application } from '@nocobase/app-server/application';
 import {
@@ -2866,8 +2867,14 @@ export default class HrProvider extends ServiceProvider<Application> {
           if (Date.now() - lastMailPoll < settings.pollMinutes * 60_000 - 5_000)
             return { state: 'completed', outcome: 'succeeded', result: {} };
           lastMailPoll = Date.now();
-          const counts = await container.resolve(mailServiceToken).poll();
-          return { state: 'completed', outcome: 'succeeded', result: counts };
+          try {
+            const counts = await container.resolve(mailServiceToken).poll();
+            return { state: 'completed', outcome: 'succeeded', result: counts };
+          } catch (error) {
+            if (!(error instanceof MailPollError)) throw error;
+            // The original errors remain in task history/logs; never expose mail content in the reason.
+            return { state: 'failed', reason: error.message };
+          }
         },
       });
       scheduler.defineSchedule({

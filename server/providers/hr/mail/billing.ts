@@ -12,6 +12,7 @@
  * nothing in a message changes who it goes to or what it contains.
  */
 import type { AutomationRunContext } from '../automation.js';
+import { runMailTask } from './task-result.js';
 import { tryAuthorizeAction } from '../authorize.js';
 import type { ActorContext } from '../framework-service.js';
 import type { ReconciliationLine } from '../payroll/vendor-bills.js';
@@ -201,7 +202,8 @@ export function createBillingMailHandler(deps: {
   }
 
   async function sort(message: MailMessage, attempt?: string) {
-    await deps.run(
+    await runMailTask(
+      deps.run,
       MAIL_SORT_BILLING,
       {
         dedupeKey: attempt ? `${message.id}:${attempt}` : message.id,
@@ -265,7 +267,8 @@ export function createBillingMailHandler(deps: {
   async function reply(message: MailMessage) {
     if (message.refType !== 'laborVendorBill' || !message.refId) return;
     const billId = message.refId;
-    await deps.run(
+    await runMailTask(
+      deps.run,
       MAIL_SORT_BILLING,
       { dedupeKey: message.id, triggerRef: { mailId: message.id, billId } },
       async (run) => {

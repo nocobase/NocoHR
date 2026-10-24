@@ -34,6 +34,9 @@ const object = (value: unknown): ObjectView =>
 export async function installMailBusinessProbe(h: Harness) {
   assert.equal(process.env.NODE_ENV, 'test');
   const phase = process.env.MAIL_PROBE_PHASE ?? 'before';
+  const result = process.env.MAIL_PROBE_RESULT ?? 'success';
+  assert(['success', 'failure', 'mixed'].includes(result));
+  const expectFailure = result !== 'success';
   assert(['before', 'late'].includes(phase));
   const app = h.server.application;
   const config = app.config.get<MailConfig>('mail');
@@ -50,13 +53,14 @@ export async function installMailBusinessProbe(h: Harness) {
   const entered = deferred();
   const gate = deferred();
   const pollDone = deferred();
+  void pollDone.promise.catch(() => {});
   const restores: (() => void)[] = [];
   let modelCalls = 0;
   let modelActive = 0;
   let first = true;
   const log = (event: string, details: ObjectView = {}) => {
     process.stderr.write(
-      `MAIL_BUSINESS ${JSON.stringify({ event, phase, pid: process.pid, t: performance.now(), providers: fixtureProviderStates(app, true), ...details })}\n`,
+      `MAIL_BUSINESS ${JSON.stringify({ event, phase, result, pid: process.pid, t: performance.now(), providers: fixtureProviderStates(app, true), ...details })}\n`,
     );
   };
   function observe(target: object, key: string, label: string) {
@@ -136,6 +140,19 @@ export async function installMailBusinessProbe(h: Harness) {
     for await (const part of request) raw += part;
     const input = JSON.parse(raw) as { stream?: boolean };
     log('model.request', { modelCalls });
+    if (expectFailure) {
+      response.writeHead(400, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          error: {
+            message: 'controlled-mail-model-failure',
+            type: 'invalid_request_error',
+            code: 'controlled_failure',
+          },
+        }),
+      );
+      return;
+    }
     const message = {
       role: 'assistant',
       content: JSON.stringify({ answer: '工作地点是成都工厂。', open: [] }),
@@ -210,6 +227,18 @@ export async function installMailBusinessProbe(h: Harness) {
       date: new Date(),
     }),
   );
+  if (result === 'mixed') {
+    writeFileSync(
+      path.join(inbox, 'mail-dependency-withdraw.eml'),
+      composeMail({
+        from: { name: 'Controlled candidate', address: 'qinchuan@qiheng.test' },
+        to: 'recruiting@qiheng.test',
+        subject: 'Controlled withdrawal',
+        text: '我已找到工作，不再考虑这个职位。',
+        date: new Date(),
+      }),
+    );
+  }
   const schedule = await db
     .query()
     .selectFrom('scheduleDefinitions')
@@ -251,7 +280,7 @@ export async function installMailBusinessProbe(h: Harness) {
     const occurrences = await db
       .query()
       .selectFrom('scheduleOccurrences')
-      .select(['id', 'status', 'finishedAt'])
+      .select(['id', 'status', 'finishedAt', 'reason'])
       .where('scheduleId', '=', String(schedule.id))
       .execute();
     terminal = {
@@ -297,7 +326,33 @@ export async function installMailBusinessProbe(h: Harness) {
       try {
         if (phase === 'before') {
           gate.resolve();
-          await pollDone.promise;
+          let pollError: unknown;
+          try {
+            await pollDone.promise;
+          } catch (error) {
+            pollError = error;
+          }
+          if (expectFailure) {
+            assert(
+              pollError instanceof AggregateError,
+              'A real business failure must reject poll',
+            );
+            assert.equal(pollError.message, 'MAIL_PROCESSING_FAILED');
+            assert(
+              pollError.errors.some(
+                (error: unknown) =>
+                  error instanceof Error &&
+                  error.message.includes('controlled-mail-model-failure'),
+              ),
+            );
+            log('poll.failure', { counts: object(pollError).counts });
+            // Already ingested messages are not automatically processed again after failure.
+            const before = modelCalls;
+            const repeated = await business.poll('recruiting');
+            assert.equal(repeated.recruiting, 0);
+            assert.equal(modelCalls, before);
+            log('poll.repeated', { counts: repeated, modelCalls });
+          } else assert.equal(pollError, undefined);
           log('poll.finished');
           await h.close();
         } else {
@@ -317,30 +372,56 @@ export async function installMailBusinessProbe(h: Harness) {
           ),
           'A nonempty message must enter the real recruiting reply task',
         );
-        assert(
-          tasks.every((task) => task.status === 'succeeded'),
-          'Mail business tasks must succeed before dependencies are released',
-        );
-        assert(
-          (terminal.messages as ObjectView[]).some(
-            (message) => message.status === 'draft',
-          ),
-          'The real handler must save a reply draft',
-        );
-        const reply = tasks.find(
+        assert.equal(terminal.event, 'ScheduleEnd');
+        const replies = tasks.filter(
           (task) => task.task === 'recruitingAssistant.mailReplyRecruiting',
         );
-        assert.equal(
-          typeof reply?.conversationSessionId,
-          'string',
-          'The successful reply must retain its native session',
+        const drafts = (terminal.messages as ObjectView[]).filter(
+          (message) => message.status === 'draft',
         );
-        assert.equal(terminal.event, 'ScheduleEnd');
-        assert(
-          (terminal.occurrences as ObjectView[]).some(
-            (row) => row.status === 'succeeded' && row.finishedAt,
-          ),
-        );
+        if (expectFailure) {
+          assert(tasks.some((task) => task.status === 'failed'));
+          assert(
+            tasks
+              .filter((task) => task.status === 'failed')
+              .every(
+                (task) =>
+                  typeof task.error === 'string' &&
+                  task.error.includes('controlled-mail-model-failure') &&
+                  task.finishedAt,
+              ),
+          );
+          assert(
+            replies.some(
+              (task) =>
+                task.status === 'failed' && task.conversationSessionId === null,
+            ),
+          );
+          assert.equal(drafts.length, result === 'mixed' ? 1 : 0);
+          assert(
+            (terminal.occurrences as ObjectView[]).some(
+              (row) => row.status === 'failed' && row.finishedAt,
+            ),
+          );
+          if (result === 'mixed')
+            assert(replies.some((task) => task.status === 'succeeded'));
+        } else {
+          assert(
+            tasks.every((task) => task.status === 'succeeded'),
+            'Mail business tasks must succeed before dependencies are released',
+          );
+          assert.equal(
+            drafts.length,
+            1,
+            'The real handler must save one reply draft',
+          );
+          assert.equal(typeof replies[0]?.conversationSessionId, 'string');
+          assert(
+            (terminal.occurrences as ObjectView[]).some(
+              (row) => row.status === 'succeeded' && row.finishedAt,
+            ),
+          );
+        }
         assert(modelCalls > 0, 'The real native model connection must execute');
         assert.equal(modelActive, 0);
         await h.close();

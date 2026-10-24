@@ -30,6 +30,8 @@ const option = (key) => {
 };
 const order = option('--order');
 const phase = option('--phase');
+const scenario = option('--result') ?? 'success';
+assert(['success', 'failure', 'mixed'].includes(scenario));
 assert(
   ['original', 'candidate'].includes(order),
   '--order original|candidate is required',
@@ -60,10 +62,14 @@ const tree = path.join(work, 'app');
 const resources = path.join(work, 'resources');
 mkdirSync(tree);
 mkdirSync(resources);
-const head = execFileSync('git', ['rev-parse', 'HEAD'], {
-  cwd: root,
-  encoding: 'utf8',
-}).trim();
+const head = execFileSync(
+  'git',
+  ['rev-parse', option('--revision') ?? 'HEAD'],
+  {
+    cwd: root,
+    encoding: 'utf8',
+  },
+).trim();
 const archive = execFileSync('git', ['archive', head], {
   cwd: root,
   maxBuffer: 256 * 1024 * 1024,
@@ -148,6 +154,7 @@ Object.assign(env, {
   TEMP: resources,
   NODE_ENV: 'test',
   MAIL_PROBE_PHASE: phase,
+  MAIL_PROBE_RESULT: scenario,
 });
 const started = performance.now();
 const log = createWriteStream(path.join(output, 'run.log'), { flags: 'wx' });
@@ -174,6 +181,7 @@ const result = {
   head,
   order,
   phase,
+  scenario,
   ...status,
   elapsedMs: Math.round(performance.now() - started),
   leftoversRemovedAfterChildExit: leftovers,
