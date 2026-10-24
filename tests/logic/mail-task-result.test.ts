@@ -180,6 +180,7 @@ describe('mail task finalization', () => {
     ).catch((error: unknown) => error);
     expect(reason).toBeInstanceOf(AggregateError);
     expect((reason as AggregateError).errors).toEqual([original, following]);
+    expect((reason as AggregateError).cause).toBe(following);
   });
 });
 

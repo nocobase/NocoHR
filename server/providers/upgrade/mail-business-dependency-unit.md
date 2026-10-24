@@ -4,6 +4,10 @@
 
 The independently accepted leave correction, 20-case selection and two real-HTTP hosts remain accepted. Current-source install/build, strict entry startup and static new-database restore retain their previously reviewed scope. The historical complete-suite failure and public full-drain gap remain open; this increment adds only test probes, passive metadata visibility and records.
 
+## Current outcome follow-up
+
+The [status propagation unit](mail-status-unit.md) corrects the application outcome mismatch while leaving this dependency-release counterexample open. For the historical reproduction commands below, pass `--revision 6ccf2d8` to the current driver. The candidate remains unsafe and uninstalled; truthful failed outcomes do not keep Agents available. The [separate shutdown proposal](mail-shutdown-approach.md) requires owner review before any lifecycle change.
+
 ## Recommendation and minimum follow-up
 
 - **Recommendation:** reject the two-item swap as an installable local fix. A dependency must remain usable through the last accepted mail handler, not only through native synchronization. No production order change or early-drain adapter is installed.

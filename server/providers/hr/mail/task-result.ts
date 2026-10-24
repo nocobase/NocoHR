@@ -39,7 +39,9 @@ export async function runMailTask<T extends Record<string, unknown>>(
     await after?.();
   } catch (error) {
     if (failed && rejected)
-      throw new AggregateError([rejected.reason, error], 'MAIL_TASK_FAILED');
+      throw new AggregateError([rejected.reason, error], 'MAIL_TASK_FAILED', {
+        cause: error,
+      });
     throw error;
   }
   if (failed) {

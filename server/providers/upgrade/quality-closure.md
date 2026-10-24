@@ -2,7 +2,11 @@
 
 The upgrade translation, notification route, test hosts and nine client warning fixes are closed, including independent UTC and ten-category nonempty report verification at `47f38cc`. Full lint/format and all three type projects passed for that source. Historical failure logs below are preserved; they are not outstanding quality warnings. Current artifact/HTTP/recovery/full-suite results are in the [application-only acceptance unit](app-only-acceptance.md). Complete background shutdown remains a separate external-contract gap. The PR remains draft; `.54`, preflight and gates remain unchanged.
 
-## Nonempty-mail dependency check
+## Mail outcome follow-up after `6ccf2d8`
+
+The [mail status unit](mail-status-unit.md) propagates recorded handler failures through the poll to the existing public Scheduler failed result, while retaining successful partial writes, legitimate skips and deduplication. Correcting the historical outcome mismatch does not keep dependencies alive. Production shutdown order remains unchanged. The [separate owner proposal](mail-shutdown-approach.md) records the remaining public lifecycle gap; no candidate or early-drain adapter is installed. Original full-run failures and deferred persistent Knowledge Q&A remain.
+
+## Historical nonempty-mail dependency check at `6ccf2d8`
 
 The [nonempty prerequisite](mail-business-dependency-unit.md) rejects exchanging only Mail/Scheduler as an installable fix: a real recruiting reply reaches the already-closed Agents service, records failure and saves no draft, despite a successful poll occurrence and normal application cleanup. No production order changes. The prior quality fixes and accepted leave/HTTP evidence stay closed; candidate artifact checks stop at this failed prerequisite, while historical full-suite and complete-drain failures remain open.
 

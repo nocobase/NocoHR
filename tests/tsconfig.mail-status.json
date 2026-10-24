@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.server.json",
+  "compilerOptions": {
+    "composite": false,
+    "incremental": false,
+    "noEmit": true
+  },
+  "include": ["logic/mail-task-result.test.ts"],
+  "exclude": []
+}

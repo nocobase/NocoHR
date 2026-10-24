@@ -145,7 +145,7 @@ export async function installMailBusinessProbe(h: Harness) {
     for await (const part of request) raw += part;
     const input = JSON.parse(raw) as { stream?: boolean };
     log('model.request', { modelCalls });
-    if (expectFailure) {
+    if (expectFailure && (result === 'failure' || modelCalls === 1)) {
       response.writeHead(400, { 'content-type': 'application/json' });
       response.end(
         JSON.stringify({
@@ -238,8 +238,8 @@ export async function installMailBusinessProbe(h: Harness) {
       composeMail({
         from: { name: 'Controlled candidate', address: 'qinchuan@qiheng.test' },
         to: 'recruiting@qiheng.test',
-        subject: 'Controlled withdrawal',
-        text: '我已找到工作，不再考虑这个职位。',
+        subject: 'Controlled second question',
+        text: '请问工作地点是在成都吗？',
         date: new Date(Date.now() + 2_000),
       }),
     );

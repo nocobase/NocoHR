@@ -2,9 +2,13 @@
 
 Current scope is **nocoHR application only**, following the owner's 2026-10-24 08:59 decision. Quality fixes and independent UTC/report coverage review are closed at `47f38cc`; the old warnings and format backlog are historical. The [application-only acceptance unit](app-only-acceptance.md) records fresh current-source install/build, real-listener HTTP shutdown and isolated recovery results separately from the still-missing public background-drain contract. No production shutdown adapter or package change is installed. The PR stays draft, `.54`, preflight and closed gates stay unchanged.
 
-## Nonempty mail prerequisite: candidate rejected
+## Mail outcome follow-up after `6ccf2d8`
 
-The [nonempty dependency unit](mail-business-dependency-unit.md) finds that exchanging only Mail/Scheduler lets a real recruiting message enter native generation after Agents has closed. The reply task fails and no draft is stored, although the occurrence succeeds and application cleanup completes. The candidate is not installed; further candidate artifact/lifecycle checks stop at this failed prerequisite. Prior leave and real-HTTP evidence is independently accepted. Production source, fixed dependencies, history and safety gates remain unchanged; full background shutdown and the original complete-run failures remain open.
+The [mail status unit](mail-status-unit.md) propagates recorded handler failures through the poll to the existing public Scheduler failed result, while retaining successful partial writes, legitimate skips and deduplication. The original nonempty candidate counterexample below is historical evidence of the previous outcome mismatch; correcting that mismatch does not keep dependencies alive. Production shutdown order remains unchanged. The [separate owner proposal](mail-shutdown-approach.md) records why the current public lifecycle is insufficient; no candidate or early-drain adapter is installed. Original full-run failures remain, and current source/compiled artifact checks are reported with this status-only delivery. Persistent Knowledge Q&A stays deferred.
+
+## Historical nonempty mail prerequisite at `6ccf2d8`: candidate rejected
+
+The [nonempty dependency unit](mail-business-dependency-unit.md) finds that exchanging only Mail/Scheduler lets a real recruiting message enter native generation after Agents has closed. The reply task fails and no draft is stored, although the occurrence succeeds and application cleanup completes. The candidate is not installed; further candidate artifact/lifecycle checks stop at this failed prerequisite. Prior leave and real-HTTP evidence is independently accepted. That test-only delivery left production source, fixed dependencies, history and safety gates unchanged. Full background shutdown and the original complete-run failures remain open.
 
 ## Leave-fixture and same-window shutdown follow-up
 
