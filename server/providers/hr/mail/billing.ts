@@ -357,7 +357,8 @@ export function createBillingMailHandler(deps: {
     async draftForBill(billId: string) {
       const mailId = await deps.billSourceMail(billId);
       if (!mailId) return;
-      await deps.run(
+      await runMailTask(
+        deps.run,
         MAIL_REPLY_BILLING,
         { dedupeKey: `${billId}:${mailId}`, triggerRef: { billId, mailId } },
         async (run) => {
