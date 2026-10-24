@@ -1,5 +1,7 @@
 # Current application artifact and integration checks
 
+Snapshot: the following build/full-run evidence belongs to `dbb8355`. The [bounded follow-up](template-marker-followup.md) records the later authorized source-marker synchronization to `.76` and its single diagnostic replay; original failures and the historical `.54` preservation manifest below remain intact. Production runtime source is unchanged.
+
 Current production source is unchanged from `50cad3c`. Its complete build, three-project types, whole-repository lint/format and strict source/compiled idle entries pass. The single complete run has 2022 passing assertions but exits 1 because organization-sync application teardown exceeds 30 seconds; historical failures remain separate. No lifecycle adapter or dependency change is installed, and full background drain remains an external public-contract gap.
 
 ## Current validation matrix

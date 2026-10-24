@@ -9,7 +9,7 @@
   },
   "nocobase": {
     "templateKind": "app",
-    "defaultTemplateVersion": "1.0.0-beta.54",
+    "defaultTemplateVersion": "1.0.0-beta.76",
     "templatePackage": "@nocobase/app-template-default"
   },
   "devDependencies": {
